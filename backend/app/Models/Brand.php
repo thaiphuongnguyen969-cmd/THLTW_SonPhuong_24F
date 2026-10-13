@@ -4,18 +4,27 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Brand extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name']; // Hoặc các trường khác của bạn
+    protected $fillable = [
+        'name',
+        'slug',
+        'description',
+        'logo',
+        'status',
+    ];
 
-    /**
-     * Lấy tên cột dùng để định danh route model binding.
-     */
-    public function getRouteKeyName()
+    public function products(): HasMany
     {
-        return 'name'; // Thay 'id' bằng 'name' hoặc cột slug tùy ý
+        return $this->hasMany(Product::class);
+    }
+
+    public function getRouteKeyName(): string
+    {
+        return 'slug';
     }
 }

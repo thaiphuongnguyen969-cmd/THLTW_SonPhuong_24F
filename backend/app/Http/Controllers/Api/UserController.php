@@ -54,7 +54,7 @@ class UserController extends Controller
         $user = User::findOrFail($id);
 
         $data = $request->validated();
-        if (isset($data['password'])) {
+        if (array_key_exists('password', $data)) {
             $data['password'] = Hash::make($data['password']);
         }
 

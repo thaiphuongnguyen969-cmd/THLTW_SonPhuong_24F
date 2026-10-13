@@ -3,68 +3,144 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\ProductIndexRequest;
+use App\Http\Requests\ProductRequest;
+use App\Http\Resources\ProductResource;
 use App\Models\Product;
 use Illuminate\Http\Request;
 
 class ProductController extends Controller
 {
-    // Lấy danh sách sản phẩm (kèm thông tin danh mục)
-    public function index()
+    public function index(ProductIndexRequest $request)
     {
-        $products = Product::with('category')->get();
-        return response()->json($products, 200);
-    }
+        $query = Product::query()
+            ->with(['category:id,name,slug', 'brand:id,name,slug'])
+            ->orderBy(
+                $request->validated('sort_by', 'created_at'),
+                $request->validated('sort_direction', 'desc')
+            );
 
-    // Thêm mới sản phẩm
-    public function store(Request $request)
-    {
-        $validated = $request->validate([
-            'category_id' => 'required|exists:categories,id',
-            'name' => 'required|string|max:200',
-            'description' => 'nullable|string',
-            'price' => 'required|numeric',
-            'image' => 'nullable|string|max:255',
-            'quantity' => 'required|integer|min:0',
+        $isAdmin = $this->isActiveAdmin($request);
+
+        if ($request->validated('status') === 'inactive' && ! $isAdmin) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không có quyền xem sản phẩm không hoạt động.',
+            ], 403);
+        }
+
+        if ($isAdmin && $request->validated('status')) {
+            $query->where('status', $request->validated('status'));
+        } else {
+            $query->where('status', 'active');
+        }
+
+        if (! $isAdmin) {
+            $query
+                ->whereHas('category', fn ($category) => $category->where('status', 'active'))
+                ->where(function ($builder) {
+                    $builder->whereNull('brand_id')
+                        ->orWhereHas('brand', fn ($brand) => $brand->where('status', 'active'));
+                });
+        }
+
+        if ($request->filled('search')) {
+            $search = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $request->validated('search'));
+            $query->where('name', 'like', '%'.$search.'%');
+        }
+
+        $query
+            ->when($request->validated('category_id'), fn ($builder, $id) => $builder->where('category_id', $id))
+            ->when($request->validated('brand_id'), fn ($builder, $id) => $builder->where('brand_id', $id))
+            ->when($request->filled('min_price'), fn ($builder) => $builder->where('price', '>=', $request->validated('min_price')))
+            ->when($request->filled('max_price'), fn ($builder) => $builder->where('price', '<=', $request->validated('max_price')));
+
+        $products = $query->paginate($request->integer('per_page', 15));
+
+        return ProductResource::collection($products)->additional([
+            'success' => true,
+            'message' => 'Lấy danh sách sản phẩm thành công.',
         ]);
-
-        $product = Product::create($validated);
-        return response()->json([
-            'message' => 'Thêm sản phẩm thành công',
-            'data' => $product
-        ], 201);
     }
 
-    // Lấy chi tiết một sản phẩm (Dùng Route Model Binding)
+    public function store(ProductRequest $request)
+    {
+        $product = Product::create($request->validated());
+
+        return (new ProductResource($product->load(['category', 'brand', 'images', 'variants.size', 'variants.color', 'promotions'])))
+            ->additional([
+                'success' => true,
+                'message' => 'Tạo sản phẩm thành công.',
+            ])
+            ->response()
+            ->setStatusCode(201);
+    }
+
     public function show(Product $product)
     {
-        // Laravel sẽ tự động tìm theo ID hoặc theo 'name' tùy vào URL bạn truyền vào
-        return response()->json($product->load('category'), 200);
-    }
+        $isAdmin = $this->isActiveAdmin(request());
 
-    // Cập nhật sản phẩm
-    public function update(Request $request, Product $product)
-    {
-        $validated = $request->validate([
-            'category_id' => 'sometimes|exists:categories,id',
-            'name' => 'sometimes|string|max:200',
-            'description' => 'nullable|string',
-            'price' => 'sometimes|numeric',
-            'image' => 'nullable|string|max:255',
-            'quantity' => 'sometimes|integer|min:0',
+        $product->load([
+            'category:id,name,slug,parent_id,status',
+            'brand:id,name,slug,logo,status',
+            'images:id,product_id,image_url,is_primary,sort_order',
+            'variants' => fn ($query) => $query
+                ->select(['id', 'product_id', 'size_id', 'color_id', 'sku', 'price', 'stock', 'status'])
+                ->when(! $isAdmin, fn ($variants) => $variants->where('status', 'active')),
+            'variants.size:id,name,sort_order',
+            'variants.color:id,name,hex_code',
+            'promotions' => fn ($query) => $query
+                ->where('promotions.status', 'active')
+                ->where('promotions.starts_at', '<=', now())
+                ->where('promotions.ends_at', '>=', now()),
         ]);
 
-        $product->update($validated);
+        if (! $this->isActiveAdmin(request())) {
+            abort_unless(
+                $product->status === 'active'
+                && $product->category?->status === 'active'
+                && ($product->brand === null || $product->brand->status === 'active'),
+                404
+            );
+        }
 
-        return response()->json([
-            'message' => 'Cập nhật sản phẩm thành công',
-            'data' => $product
-        ], 200);
+        return (new ProductResource($product))->additional([
+            'success' => true,
+            'message' => 'Lấy chi tiết sản phẩm thành công.',
+        ]);
     }
 
-    // Xóa sản phẩm
+    public function update(ProductRequest $request, Product $product)
+    {
+        $product->update($request->validated());
+        $product->refresh();
+
+        return (new ProductResource($product->load([
+            'category',
+            'brand',
+            'images',
+            'variants.size',
+            'variants.color',
+            'promotions',
+        ])))->additional([
+            'success' => true,
+            'message' => 'Cập nhật sản phẩm thành công.',
+        ]);
+    }
+
     public function destroy(Product $product)
     {
         $product->delete();
-        return response()->json(['message' => 'Xóa sản phẩm thành công'], 200);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Ngừng kinh doanh sản phẩm thành công.',
+        ]);
+    }
+
+    private function isActiveAdmin(ProductIndexRequest|Request $request): bool
+    {
+        return $request->user()?->role === 'admin'
+            && $request->user()?->status === 'active';
     }
 }
