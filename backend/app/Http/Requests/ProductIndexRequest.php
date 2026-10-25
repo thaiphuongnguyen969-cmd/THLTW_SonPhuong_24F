@@ -17,7 +17,8 @@ class ProductIndexRequest extends FormRequest
             'brand_id' => ['sometimes', 'integer', 'exists:brands,id'],
             'min_price' => ['sometimes', 'numeric', 'min:0'],
             'max_price' => ['sometimes', 'numeric', 'min:0'],
-            'status' => ['sometimes', 'string', Rule::in(['active', 'inactive'])],
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'status' => ['sometimes', 'string', Rule::in(['active', 'inactive', 'all'])],
             'sort_by' => ['sometimes', 'string', Rule::in(['name', 'price', 'created_at'])],
             'sort_direction' => ['sometimes', 'string', Rule::in(['asc', 'desc'])],
         ];

@@ -4,12 +4,16 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const links = [
+  { href: "/admin/trash", label: "Thùng rác" },
   { href: "/admin", label: "Tổng quan" },
   { href: "/admin/products", label: "Quản lý sản phẩm" },
   { href: "/admin/categories", label: "Quản lý danh mục" },
   { href: "/admin/brands", label: "Quản lý thương hiệu" },
+  { href: "/admin/posts", label: "Quản lý bài viết" },
   { href: "/admin/orders", label: "Quản lý đơn hàng" },
   { href: "/admin/customers", label: "Khách hàng" },
+  { href: "/admin/users", label: "Quản lý tài khoản" },
+  { href: "/admin/menus", label: "Quản lý menu" },
 ];
 
 export function Sidebar({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?: () => void }) {

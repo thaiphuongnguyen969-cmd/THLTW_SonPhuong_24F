@@ -18,7 +18,8 @@ class ProductController extends Controller
             ->orderBy(
                 $request->validated('sort_by', 'created_at'),
                 $request->validated('sort_direction', 'desc')
-            );
+            )
+            ->orderByDesc('id');
 
         $isAdmin = $this->isActiveAdmin($request);
 
@@ -29,9 +30,9 @@ class ProductController extends Controller
             ], 403);
         }
 
-        if ($isAdmin && $request->validated('status')) {
+        if ($isAdmin && in_array($request->validated('status'), ['active', 'inactive'], true)) {
             $query->where('status', $request->validated('status'));
-        } else {
+        } elseif (! $isAdmin) {
             $query->where('status', 'active');
         }
 

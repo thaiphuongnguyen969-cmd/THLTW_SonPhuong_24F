@@ -1,11 +1,10 @@
 import { ProductCatalogue } from "@/components/shop/ProductCatalogue";
-import { mockProducts } from "@/lib/mock-data";
 
 export default async function ProductsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; category?: string; brand?: string }>;
+  searchParams: Promise<{ q?: string; category?: string; brand?: string; min_price?: string; max_price?: string; sort?: string; page?: string }>;
 }) {
   const filters = await searchParams;
-  return <ProductCatalogue products={mockProducts} initialFilters={filters} />;
+  return <ProductCatalogue initialFilters={filters} />;
 }

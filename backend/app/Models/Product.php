@@ -68,4 +68,16 @@ class Product extends Model
     {
         return 'slug';
     }
+
+    public function resolveRouteBinding($value, $field = null)
+    {
+        $bindingField = $field ?? $this->getRouteKeyName();
+        $product = parent::resolveRouteBinding($value, $field);
+
+        if ($product !== null || $bindingField !== $this->getRouteKeyName() || preg_match('/^\d+$/', (string) $value) !== 1) {
+            return $product;
+        }
+
+        return $this->newQuery()->whereKey($value)->first();
+    }
 }

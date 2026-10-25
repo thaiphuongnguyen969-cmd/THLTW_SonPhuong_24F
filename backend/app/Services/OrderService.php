@@ -20,6 +20,33 @@ class OrderService
     private const MAX_DECIMAL_MINOR_UNITS = '999999999999';
     private const MAX_UNSIGNED_INTEGER = 4294967295;
 
+    private const CONFIRMED_STATUS = 'Đã xác nhận';
+    private const PREPARING_STATUS = 'Đang chuẩn bị hàng';
+    private const SHIPPING_STATUS = 'Đang giao hàng';
+    private const DELIVERED_STATUS = 'Đã giao hàng';
+
+    private const ADMIN_STATUS_TRANSITIONS = [
+        self::PENDING_STATUS => [self::CONFIRMED_STATUS, self::CANCELLED_STATUS],
+        self::CONFIRMED_STATUS => [self::PREPARING_STATUS, self::CANCELLED_STATUS],
+        self::PREPARING_STATUS => [self::SHIPPING_STATUS, self::CANCELLED_STATUS],
+        self::SHIPPING_STATUS => [self::DELIVERED_STATUS],
+        self::DELIVERED_STATUS => [],
+        self::CANCELLED_STATUS => [],
+    ];
+
+    public static function adminStatuses(): array
+    {
+        return array_values(array_unique([
+            ...array_keys(self::ADMIN_STATUS_TRANSITIONS),
+            ...array_merge(...array_values(self::ADMIN_STATUS_TRANSITIONS)),
+        ]));
+    }
+
+    public static function availableAdminTransitions(string $status): array
+    {
+        return self::ADMIN_STATUS_TRANSITIONS[$status] ?? [];
+    }
+
     public function __construct(
         private readonly CartPriceCalculator $prices
     ) {
@@ -125,6 +152,7 @@ class OrderService
                 'shipping_phone' => $address->phone,
                 'note' => $note,
             ]);
+            $order->forceFill(['order_code' => $this->generateOrderCode($order)])->save();
 
             foreach ($orderLines as $line) {
                 /** @var ProductVariant $variant */
@@ -165,15 +193,65 @@ class OrderService
         }, 3);
     }
 
-    public function cancel(User $user, int $orderId, ?string $reason): Order
+    public function updateAdminStatus(
+        User $admin,
+        int $orderId,
+        string $expectedStatus,
+        string $nextStatus,
+        ?string $reason,
+    ): Order {
+        return DB::transaction(function () use ($admin, $orderId, $expectedStatus, $nextStatus, $reason): Order {
+            $order = Order::query()->whereKey($orderId)->lockForUpdate()->firstOrFail();
+
+            abort_unless($order->status === $expectedStatus, response()->json([
+                'success' => false,
+                'message' => 'Đơn hàng đã được cập nhật bởi thao tác khác. Hãy tải lại dữ liệu rồi thử lại.',
+            ], 409));
+
+            abort_unless(in_array($nextStatus, self::availableAdminTransitions($order->status), true), response()->json([
+                'success' => false,
+                'message' => 'Không thể chuyển đơn hàng từ trạng thái hiện tại sang trạng thái được chọn.',
+            ], 409));
+
+            if ($nextStatus === self::CANCELLED_STATUS) {
+                return $this->cancel($admin, $orderId, $reason, $admin, [
+                    self::PENDING_STATUS,
+                    self::CONFIRMED_STATUS,
+                    self::PREPARING_STATUS,
+                ]);
+            }
+
+            $order->status = $nextStatus;
+            $order->save();
+            $order->statusHistories()->create([
+                'changed_by' => $admin->getKey(),
+                'from_status' => $expectedStatus,
+                'to_status' => $nextStatus,
+                'note' => $reason,
+            ]);
+
+            return $this->loadOrder($order);
+        }, 3);
+    }
+
+    public function cancel(
+        User $user,
+        int $orderId,
+        ?string $reason,
+        ?User $actor = null,
+        ?array $allowedStatuses = null,
+    ): Order
     {
-        return DB::transaction(function () use ($user, $orderId, $reason): Order {
-            $order = $user->orders()
+        $allowedStatuses ??= [self::PENDING_STATUS];
+
+        return DB::transaction(function () use ($user, $orderId, $reason, $actor, $allowedStatuses): Order {
+            $orders = $actor ? Order::query() : $user->orders();
+            $order = $orders
                 ->whereKey($orderId)
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            abort_unless($order->status === self::PENDING_STATUS, response()->json([
+            abort_unless(in_array($order->status, $allowedStatuses, true), response()->json([
                 'success' => false,
                 'message' => 'Chỉ có thể hủy đơn hàng đang chờ xác nhận.',
             ], 409));
@@ -187,6 +265,7 @@ class OrderService
                 'message' => 'Không thể hủy đơn hàng không có lịch sử checkout hợp lệ.',
             ], 409));
 
+            $previousStatus = $order->status;
             $items = $order->items()->orderBy('id')->lockForUpdate()->get();
             abort_unless($items->isNotEmpty(), response()->json([
                 'success' => false,
@@ -263,8 +342,8 @@ class OrderService
             $order->cancelled_reason = $reason;
             $order->save();
             $order->statusHistories()->create([
-                'changed_by' => $user->getKey(),
-                'from_status' => self::PENDING_STATUS,
+                'changed_by' => ($actor ?? $user)->getKey(),
+                'from_status' => $previousStatus,
                 'to_status' => self::CANCELLED_STATUS,
                 'note' => $reason,
             ]);
@@ -370,5 +449,19 @@ class OrderService
     private function loadOrder(Order $order): Order
     {
         return $order->load(['items', 'payments', 'statusHistories']);
+    }
+
+    private function generateOrderCode(Order $order): string
+    {
+        $baseCode = 'SP-'.now()->format('Ymd').'-'.str_pad((string) $order->getKey(), 8, '0', STR_PAD_LEFT);
+        $code = $baseCode;
+        $suffix = 1;
+
+        while (Order::query()->where('order_code', $code)->where('id', '<>', $order->getKey())->exists()) {
+            $code = $baseCode.'-'.$suffix;
+            $suffix++;
+        }
+
+        return $code;
     }
 }

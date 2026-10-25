@@ -1,19 +1,43 @@
-import type { ApiResponse } from "@/lib/types";
 import type { User } from "@/types/user";
-import { apiFetch } from "@/lib/api/client";
+import { apiClient } from "@/lib/api/client";
+
+export type LoginResponse = {
+  message: string;
+  access_token: string;
+  token_type: "Bearer";
+  user: User;
+};
+
+export type RegisterPayload = {
+  name: string;
+  email: string;
+  password: string;
+  phone?: string;
+  address?: string;
+};
+
+export type RegisterResponse = { message: string; user: User };
 
 export async function login(payload: { email: string; password: string }) {
-  return apiFetch<ApiResponse<{ token: string; user: User }>>("/login", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
+  const response = await apiClient.post<LoginResponse>("/login", payload);
+  return response.data;
+}
+
+export async function register(payload: RegisterPayload) {
+  const response = await apiClient.post<RegisterResponse>("/register", payload);
+  return response.data;
 }
 
 export async function getCurrentUser(token: string) {
-  return apiFetch<ApiResponse<User>>("/me", {
+  const response = await apiClient.get<{ user: User }>("/me", {
     headers: { Authorization: `Bearer ${token}` },
   });
+  return response.data.user;
+}
+
+export async function logout(token: string) {
+  const response = await apiClient.post<{ message: string }>("/logout", undefined, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return response.data;
 }

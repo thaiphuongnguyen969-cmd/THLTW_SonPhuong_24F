@@ -13,6 +13,7 @@ class UserResource extends JsonResource
             'name' => $this->name,
             'email' => $this->email,
             'role' => $this->role,
+            'status' => $this->when($request->is('api/users*'), $this->status),
             'phone' => $this->phone,
             'address' => $this->address,
             'created_at' => $this->created_at?->format('Y-m-d H:i:s'),

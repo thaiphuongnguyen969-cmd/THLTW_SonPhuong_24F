@@ -55,6 +55,7 @@ class ProductVariantApiTest extends TestCase
             $table->string('status', 20)->default('active');
             $table->string('image')->nullable();
             $table->timestamps();
+            $table->softDeletes();
         });
 
         Schema::create('products', function (Blueprint $table): void {

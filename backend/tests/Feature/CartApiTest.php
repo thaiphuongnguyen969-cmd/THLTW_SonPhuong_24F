@@ -57,6 +57,7 @@ class CartApiTest extends TestCase
             $table->string('status', 20)->default('active');
             $table->string('image')->nullable();
             $table->timestamps();
+            $table->softDeletes();
         });
 
         Schema::create('brands', function (Blueprint $table): void {
@@ -67,6 +68,7 @@ class CartApiTest extends TestCase
             $table->string('logo')->nullable();
             $table->string('status', 20)->default('active');
             $table->timestamps();
+            $table->softDeletes();
         });
 
         Schema::create('products', function (Blueprint $table): void {

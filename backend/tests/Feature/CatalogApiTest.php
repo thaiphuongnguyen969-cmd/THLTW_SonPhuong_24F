@@ -57,6 +57,7 @@ class CatalogApiTest extends TestCase
             $table->string('status', 20)->default('active');
             $table->string('image')->nullable();
             $table->timestamps();
+            $table->softDeletes();
         });
 
         Schema::create('brands', function (Blueprint $table): void {
@@ -67,6 +68,7 @@ class CatalogApiTest extends TestCase
             $table->string('logo')->nullable();
             $table->string('status', 20)->default('active');
             $table->timestamps();
+            $table->softDeletes();
         });
 
         Schema::create('products', function (Blueprint $table): void {
@@ -196,6 +198,33 @@ class CatalogApiTest extends TestCase
             ->assertJsonMissing(['slug' => 'hidden']);
 
         $this->getJson('/api/categories/hidden')->assertNotFound();
+    }
+
+    public function test_admin_category_listing_searches_paginates_and_sorts_newest_first(): void
+    {
+        $oldest = Category::create(['name' => 'Needle Alpha', 'slug' => 'needle-alpha']);
+        $newest = Category::create(['name' => 'Needle Zulu', 'slug' => 'needle-zulu']);
+        $oldest->forceFill(['created_at' => now()->subDay()])->saveQuietly();
+        $newest->forceFill(['created_at' => now()])->saveQuietly();
+        Category::create(['name' => 'Other', 'slug' => 'other']);
+        $admin = $this->createAdmin('admin-category-index@example.test');
+
+        $this->withBearerToken($admin['token'])
+            ->getJson('/api/admin/categories?status=all&search=Needle&per_page=1&page=1')
+            ->assertOk()
+            ->assertJsonStructure(['success', 'data' => [['id', 'name', 'slug']], 'links', 'meta' => ['current_page', 'last_page', 'per_page', 'total']])
+            ->assertJsonPath('data.0.slug', 'needle-zulu')
+            ->assertJsonPath('meta.current_page', 1)
+            ->assertJsonPath('meta.last_page', 2)
+            ->assertJsonPath('meta.total', 2);
+
+        $this->withBearerToken($admin['token'])
+            ->getJson('/api/admin/categories?status=all&search=Needle&per_page=1&page=2')
+            ->assertOk()
+            ->assertJsonPath('data.0.slug', 'needle-alpha')
+            ->assertJsonPath('meta.current_page', 2);
+
+        $this->getJson('/api/categories')->assertOk()->assertJsonPath('data.0.slug', 'other');
     }
 
     public function test_admin_catalog_routes_allow_inactive_reads_and_protect_them_from_customers(): void
@@ -395,6 +424,31 @@ class CatalogApiTest extends TestCase
             ->assertConflict();
     }
 
+    public function test_admin_brand_listing_searches_paginates_and_sorts_newest_first(): void
+    {
+        $oldest = Brand::create(['name' => 'Needle Alpha Label', 'slug' => 'needle-alpha-label']);
+        $newest = Brand::create(['name' => 'Needle Zulu Label', 'slug' => 'needle-zulu-label']);
+        $oldest->forceFill(['created_at' => now()->subDay()])->saveQuietly();
+        $newest->forceFill(['created_at' => now()])->saveQuietly();
+        Brand::create(['name' => 'Other Label', 'slug' => 'other-label']);
+        $admin = $this->createAdmin('admin-brand-index@example.test');
+
+        $this->withBearerToken($admin['token'])
+            ->getJson('/api/admin/brands?status=all&search=Needle&per_page=1&page=1')
+            ->assertOk()
+            ->assertJsonStructure(['success', 'data' => [['id', 'name', 'slug']], 'links', 'meta' => ['current_page', 'last_page', 'per_page', 'total']])
+            ->assertJsonPath('data.0.slug', 'needle-zulu-label')
+            ->assertJsonPath('meta.last_page', 2)
+            ->assertJsonPath('meta.total', 2);
+
+        $this->withBearerToken($admin['token'])
+            ->getJson('/api/admin/brands?status=all&search=Needle&per_page=1&page=2')
+            ->assertOk()
+            ->assertJsonPath('data.0.slug', 'needle-alpha-label');
+
+        $this->getJson('/api/brands')->assertOk()->assertJsonPath('data.0.slug', 'other-label');
+    }
+
     public function test_product_listing_supports_filters_pagination_and_validated_sorting(): void
     {
         $category = Category::create(['name' => 'Tops', 'slug' => 'tops']);
@@ -433,6 +487,30 @@ class CatalogApiTest extends TestCase
             ->assertUnprocessable()
             ->assertJsonValidationErrors('max_price');
         $this->getJson('/api/products?status=inactive')->assertForbidden();
+    }
+
+    public function test_admin_product_listing_searches_paginates_and_sorts_newest_first(): void
+    {
+        $category = Category::create(['name' => 'Tops', 'slug' => 'tops']);
+        $oldest = Product::create(['category_id' => $category->id, 'name' => 'Needle Tee Old', 'slug' => 'needle-tee-old', 'price' => 100]);
+        $newest = Product::create(['category_id' => $category->id, 'name' => 'Needle Tee New', 'slug' => 'needle-tee-new', 'price' => 100]);
+        $oldest->forceFill(['created_at' => now()->subDay()])->saveQuietly();
+        $newest->forceFill(['created_at' => now()])->saveQuietly();
+        Product::create(['category_id' => $category->id, 'name' => 'Other Shirt', 'slug' => 'other-shirt', 'price' => 100]);
+        $admin = $this->createAdmin('admin-product-index@example.test');
+
+        $this->withBearerToken($admin['token'])
+            ->getJson('/api/admin/products?status=all&search=Needle&per_page=1&page=1')
+            ->assertOk()
+            ->assertJsonStructure(['success', 'data' => [['id', 'name', 'slug', 'category']], 'links', 'meta' => ['current_page', 'last_page', 'per_page', 'total']])
+            ->assertJsonPath('data.0.slug', 'needle-tee-new')
+            ->assertJsonPath('meta.last_page', 2)
+            ->assertJsonPath('meta.total', 2);
+
+        $this->withBearerToken($admin['token'])
+            ->getJson('/api/admin/products?status=all&search=Needle&per_page=1&page=2')
+            ->assertOk()
+            ->assertJsonPath('data.0.slug', 'needle-tee-old');
     }
 
     public function test_product_detail_eager_loads_related_catalog_data_without_exposing_private_inventory(): void
@@ -500,6 +578,10 @@ class CatalogApiTest extends TestCase
             ->assertJsonMissing(['sku' => 'BLACK-L']);
 
         $this->assertCount(1, $response->json('data.variants'));
+        $this->getJson('/api/products/'.$product->id)
+            ->assertOk()
+            ->assertJsonPath('data.id', $product->id)
+            ->assertJsonPath('data.slug', 'blue-shirt');
         $this->getJson('/api/products/inactive-shirt')->assertNotFound();
     }
 

@@ -5,7 +5,7 @@ export type User = {
   name: string;
   email: string;
   role: UserRole;
-  status: "active" | "inactive";
+  status?: "active" | "inactive";
   avatar?: string | null;
   phone?: string | null;
   address?: string | null;

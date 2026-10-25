@@ -14,8 +14,12 @@ class BrandController extends Controller
 {
     public function index(BrandIndexRequest $request)
     {
-        $query = Brand::query()->orderBy('name');
         $isAdmin = $this->isActiveAdmin($request);
+        $query = Brand::query()->when(
+            $isAdmin,
+            fn ($builder) => $builder->orderByDesc('created_at')->orderByDesc('id'),
+            fn ($builder) => $builder->orderBy('name')
+        );
 
         if ($request->validated('status') === 'inactive' && ! $isAdmin) {
             return response()->json([
@@ -24,10 +28,14 @@ class BrandController extends Controller
             ], 403);
         }
 
-        if ($isAdmin && $request->validated('status')) {
+        if ($isAdmin && in_array($request->validated('status'), ['active', 'inactive'], true)) {
             $query->where('status', $request->validated('status'));
-        } else {
+        } elseif (! $isAdmin) {
             $query->where('status', 'active');
+        }
+
+        if ($isAdmin && $request->filled('search')) {
+            $query->where('name', 'like', '%'.$request->validated('search').'%');
         }
 
         return BrandResource::collection(

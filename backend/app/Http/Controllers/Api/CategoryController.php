@@ -32,12 +32,20 @@ class CategoryController extends Controller
                     ->select(['id', 'parent_id', 'name', 'slug', 'status'])
                     ->when(! $isAdmin, fn ($children) => $children->where('status', 'active')),
             ])
-            ->orderBy('name');
+            ->when(
+                $isAdmin,
+                fn ($builder) => $builder->orderByDesc('created_at')->orderByDesc('id'),
+                fn ($builder) => $builder->orderBy('name')
+            );
 
-        if ($isAdmin && $request->validated('status')) {
+        if ($isAdmin && in_array($request->validated('status'), ['active', 'inactive'], true)) {
             $query->where('status', $request->validated('status'));
-        } else {
+        } elseif (! $isAdmin) {
             $query->where('status', 'active');
+        }
+
+        if ($isAdmin && $request->filled('search')) {
+            $query->where('name', 'like', '%'.$request->validated('search').'%');
         }
 
         if ($request->exists('parent_id')) {
@@ -97,7 +105,10 @@ class CategoryController extends Controller
 
     public function destroy(Category $category): JsonResponse
     {
-        if ($category->products()->withTrashed()->exists() || $category->children()->exists()) {
+        if (
+            $category->products()->withTrashed()->exists()
+            || Category::withTrashed()->where('parent_id', $category->id)->exists()
+        ) {
             return response()->json([
                 'success' => false,
                 'message' => 'Không thể xóa danh mục đang có sản phẩm hoặc danh mục con.',

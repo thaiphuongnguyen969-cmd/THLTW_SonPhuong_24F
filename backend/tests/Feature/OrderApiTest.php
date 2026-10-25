@@ -56,6 +56,7 @@ class OrderApiTest extends TestCase
             $table->string('status', 20)->default('active');
             $table->string('image')->nullable();
             $table->timestamps();
+            $table->softDeletes();
         });
         Schema::create('brands', function (Blueprint $table): void {
             $table->id();
@@ -65,6 +66,7 @@ class OrderApiTest extends TestCase
             $table->string('logo')->nullable();
             $table->string('status', 20)->default('active');
             $table->timestamps();
+            $table->softDeletes();
         });
         Schema::create('products', function (Blueprint $table): void {
             $table->id();
@@ -227,6 +229,261 @@ class OrderApiTest extends TestCase
         $this->withBearerToken($inactive['token'])->postJson('/api/orders', [])->assertUnauthorized();
         $this->withBearerToken($inactive['token'])->getJson('/api/orders/1')->assertUnauthorized();
         $this->withBearerToken($inactive['token'])->postJson('/api/orders/1/cancel')->assertUnauthorized();
+    }
+
+    public function test_admin_order_routes_require_an_active_admin(): void
+    {
+        $this->getJson('/api/admin/orders')->assertUnauthorized();
+        $this->getJson('/api/admin/orders/1')->assertUnauthorized();
+        $this->patchJson('/api/admin/orders/1/status', [])->assertUnauthorized();
+
+        $customer = $this->createUser('active', 'admin-orders-customer@example.test');
+        $this->withBearerToken($customer['token'])->getJson('/api/admin/orders')->assertForbidden();
+        $this->withBearerToken($customer['token'])->getJson('/api/admin/orders/1')->assertForbidden();
+        $this->withBearerToken($customer['token'])->patchJson('/api/admin/orders/1/status', [])->assertForbidden();
+
+        $inactiveAdmin = $this->createUser('inactive', 'admin-orders-inactive@example.test');
+        $inactiveAdmin['user']->forceFill(['role' => 'admin'])->save();
+        $this->withBearerToken($inactiveAdmin['token'])->getJson('/api/admin/orders')->assertUnauthorized();
+    }
+
+    public function test_admin_can_search_filter_paginate_and_read_order_details(): void
+    {
+        $customer = $this->createUser('active', 'findable-order-customer@example.test');
+        $admin = $this->createUser('active', 'admin-orders@example.test');
+        $admin['user']->forceFill(['role' => 'admin'])->save();
+
+        $older = $this->createLegacyOrder($customer['user'], ['order_code' => 'SP-OLD-001']);
+        $older->forceFill(['created_at' => now()->subDay()])->saveQuietly();
+        $newer = $this->createLegacyOrder($customer['user'], ['order_code' => 'SP-NEW-002']);
+        $newer->forceFill(['created_at' => now()])->saveQuietly();
+        $other = $this->createUser('active', 'other-order-customer@example.test');
+        $this->createLegacyOrder($other['user'], ['order_code' => 'OTHER-003']);
+
+        $this->withBearerToken($admin['token'])
+            ->getJson('/api/admin/orders?search=findable-order&per_page=1&page=1')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $newer->id)
+            ->assertJsonPath('data.0.customer.email', 'findable-order-customer@example.test')
+            ->assertJsonPath('data.0.order_code', 'SP-NEW-002')
+            ->assertJsonPath('meta.total', 2)
+            ->assertJsonPath('meta.last_page', 2);
+
+        $this->withBearerToken($admin['token'])
+            ->getJson('/api/admin/orders?search=findable-order&per_page=1&page=2')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $older->id);
+
+        $this->withBearerToken($admin['token'])
+            ->getJson('/api/admin/orders?status=Chờ%20xác%20nhận')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 3);
+
+        $this->withBearerToken($admin['token'])
+            ->getJson('/api/admin/orders/'.$newer->id)
+            ->assertOk()
+            ->assertJsonPath('data.customer.name', 'Order Test User')
+            ->assertJsonPath('data.customer.email', 'findable-order-customer@example.test')
+            ->assertJsonPath('data.shipping_address.address_detail', 'Legacy address')
+            ->assertJsonPath('data.order_code', 'SP-NEW-002');
+    }
+
+    public function test_admin_order_index_validates_pagination_search_and_status_filters(): void
+    {
+        $admin = $this->createUser('active', 'admin-orders-validation@example.test');
+        $admin['user']->forceFill(['role' => 'admin'])->save();
+
+        $this->withBearerToken($admin['token'])
+            ->getJson('/api/admin/orders?per_page=0')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('per_page');
+
+        $this->withBearerToken($admin['token'])
+            ->getJson('/api/admin/orders?search='.str_repeat('x', 201))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('search');
+
+        $this->withBearerToken($admin['token'])
+            ->getJson('/api/admin/orders?page=0')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('page');
+    }
+
+    public function test_admin_can_advance_orders_only_through_allowed_transitions_and_customer_sees_latest_status(): void
+    {
+        $buyer = $this->createUser('active', 'order-transition-buyer@example.test');
+        $admin = $this->createUser('active', 'order-transition-admin@example.test');
+        $admin['user']->forceFill(['role' => 'admin'])->save();
+        $order = $this->createLegacyOrder($buyer['user'], [
+            'order_code' => 'SP-TRANSITION-001',
+            'payment_method' => 'cod',
+            'payment_status' => 'unpaid',
+        ]);
+
+        $transitions = [
+            'Chờ xác nhận' => 'Đã xác nhận',
+            'Đã xác nhận' => 'Đang chuẩn bị hàng',
+            'Đang chuẩn bị hàng' => 'Đang giao hàng',
+            'Đang giao hàng' => 'Đã giao hàng',
+        ];
+        foreach ($transitions as $from => $to) {
+            $this->withBearerToken($admin['token'])
+                ->patchJson('/api/admin/orders/'.$order->id.'/status', [
+                    'expected_status' => $from,
+                    'status' => $to,
+                    'reason' => 'Cập nhật tiến độ',
+                ])
+                ->assertOk()
+                ->assertJsonPath('data.status', $to)
+                ->assertJsonPath('data.payment_status', 'unpaid');
+        }
+
+        $this->assertDatabaseHas('order_status_histories', [
+            'order_id' => $order->id,
+            'changed_by' => $admin['user']->id,
+            'from_status' => 'Đang giao hàng',
+            'to_status' => 'Đã giao hàng',
+            'note' => 'Cập nhật tiến độ',
+        ]);
+        $this->withBearerToken($admin['token'])
+            ->patchJson('/api/admin/orders/'.$order->id.'/status', [
+                'expected_status' => 'Đã giao hàng',
+                'status' => 'Đã xác nhận',
+            ])
+            ->assertStatus(409);
+
+        $this->withBearerToken($buyer['token'])
+            ->getJson('/api/orders/'.$order->id)
+            ->assertOk()
+            ->assertJsonPath('data.status', 'Đã giao hàng')
+            ->assertJsonPath('data.payment_status', 'unpaid');
+
+        $this->withBearerToken($admin['token'])
+            ->getJson('/api/admin/orders?status='.rawurlencode('Đã giao hàng'))
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.id', $order->id)
+            ->assertJsonPath('data.0.allowed_status_transitions', []);
+        $this->withBearerToken($admin['token'])
+            ->getJson('/api/admin/orders/'.$order->id)
+            ->assertOk()
+            ->assertJsonPath('data.status_histories.0.changed_by_name', 'Order Test User');
+    }
+
+    public function test_admin_cancellation_reuses_stock_restoration_and_is_idempotent(): void
+    {
+        $buyer = $this->createUser('active', 'order-admin-cancel-buyer@example.test');
+        $admin = $this->createUser('active', 'order-admin-cancel-admin@example.test');
+        $admin['user']->forceFill(['role' => 'admin'])->save();
+        $address = $this->createAddress($buyer['user']);
+        $variant = $this->createVariant(['stock' => 5]);
+        $this->createCartItem($buyer['user'], $variant, 2);
+        $orderId = $this->withBearerToken($buyer['token'])
+            ->postJson('/api/orders', ['address_id' => $address->id])
+            ->assertCreated()
+            ->json('data.id');
+        $this->assertDatabaseHas('product_variants', ['id' => $variant->id, 'stock' => 3]);
+
+        $this->withBearerToken($admin['token'])
+            ->patchJson('/api/admin/orders/'.$orderId.'/status', [
+                'expected_status' => 'Chờ xác nhận',
+                'status' => 'Đã xác nhận',
+            ])
+            ->assertOk();
+        $this->withBearerToken($admin['token'])
+            ->patchJson('/api/admin/orders/'.$orderId.'/status', [
+                'expected_status' => 'Đã xác nhận',
+                'status' => 'Đang chuẩn bị hàng',
+            ])
+            ->assertOk();
+
+        $this->withBearerToken($admin['token'])
+            ->patchJson('/api/admin/orders/'.$orderId.'/status', [
+                'expected_status' => 'Đang chuẩn bị hàng',
+                'status' => 'Đã hủy',
+                'reason' => 'Khách yêu cầu hủy',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'Đã hủy')
+            ->assertJsonPath('data.cancelled_reason', 'Khách yêu cầu hủy')
+            ->assertJsonPath('data.payment_status', 'unpaid');
+
+        $this->assertDatabaseHas('product_variants', ['id' => $variant->id, 'stock' => 5]);
+        $this->assertDatabaseHas('payments', [
+            'order_id' => $orderId,
+            'payment_method' => 'cod',
+            'status' => 'pending',
+        ]);
+        $this->assertDatabaseHas('order_status_histories', [
+            'order_id' => $orderId,
+            'changed_by' => $admin['user']->id,
+            'from_status' => 'Đang chuẩn bị hàng',
+            'to_status' => 'Đã hủy',
+            'note' => 'Khách yêu cầu hủy',
+        ]);
+
+        $this->withBearerToken($admin['token'])
+            ->patchJson('/api/admin/orders/'.$orderId.'/status', [
+                'expected_status' => 'Đã hủy',
+                'status' => 'Đã giao hàng',
+            ])
+            ->assertStatus(409);
+        $this->assertDatabaseHas('product_variants', ['id' => $variant->id, 'stock' => 5]);
+        $this->assertSame(4, \App\Models\OrderStatusHistory::query()->where('order_id', $orderId)->count());
+
+        $this->withBearerToken($buyer['token'])
+            ->getJson('/api/orders/'.$orderId)
+            ->assertOk()
+            ->assertJsonPath('data.status', 'Đã hủy');
+    }
+
+    public function test_admin_status_update_validates_payload_and_rejects_stale_state(): void
+    {
+        $buyer = $this->createUser('active', 'order-stale-buyer@example.test');
+        $admin = $this->createUser('active', 'order-stale-admin@example.test');
+        $admin['user']->forceFill(['role' => 'admin'])->save();
+        $order = $this->createLegacyOrder($buyer['user']);
+
+        $this->withBearerToken($admin['token'])
+            ->patchJson('/api/admin/orders/'.$order->id.'/status', [
+                'expected_status' => 'Chờ xác nhận',
+                'status' => 'paid',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('status');
+
+        $this->withBearerToken($admin['token'])
+            ->patchJson('/api/admin/orders/'.$order->id.'/status', [
+                'expected_status' => 'Chờ xác nhận',
+                'status' => 'Đã giao hàng',
+            ])
+            ->assertStatus(409);
+
+        $this->withBearerToken($admin['token'])
+            ->patchJson('/api/admin/orders/'.$order->id.'/status', [
+                'expected_status' => 'Chờ xác nhận',
+                'status' => 'Đã xác nhận',
+                'reason' => str_repeat('x', 1001),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('reason');
+
+        $this->withBearerToken($admin['token'])
+            ->patchJson('/api/admin/orders/'.$order->id.'/status', [
+                'expected_status' => 'Chờ xác nhận',
+                'status' => 'Đã xác nhận',
+                'unknown' => 'not allowed',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('unknown');
+
+        $this->withBearerToken($admin['token'])
+            ->patchJson('/api/admin/orders/'.$order->id.'/status', [
+                'expected_status' => 'Đã xác nhận',
+                'status' => 'Đã xác nhận',
+            ])
+            ->assertStatus(409);
+        $this->assertSame(0, \App\Models\OrderStatusHistory::query()->where('order_id', $order->id)->count());
     }
 
     public function test_checkout_rejects_an_address_owned_by_another_user(): void
@@ -399,8 +656,11 @@ class OrderApiTest extends TestCase
             ->assertJsonPath('data.status_histories.0.to_status', 'Chờ xác nhận');
 
         $orderId = $response->json('data.id');
+        $orderCode = $response->json('data.order_code');
+        $this->assertNotEmpty($orderCode);
         $this->assertDatabaseHas('orders', [
             'id' => $orderId,
+            'order_code' => $orderCode,
             'total' => '160.00',
             'total_amount' => '160.00',
             'subtotal' => '160.00',
@@ -444,11 +704,32 @@ class OrderApiTest extends TestCase
         $this->withBearerToken($buyer['token'])
             ->getJson('/api/orders/'.$orderId)
             ->assertOk()
+            ->assertJsonPath('data.order_code', $orderCode)
             ->assertJsonPath('data.shipping_address.recipient_name', 'Original Recipient')
             ->assertJsonPath('data.shipping_address.address_detail', str_repeat('Long street ', 30))
             ->assertJsonPath('data.items.0.product_name', 'Original Product')
             ->assertJsonPath('data.items.0.sku', $snapshotSku)
             ->assertJsonPath('data.items.0.unit_price', '80.00');
+    }
+
+    public function test_new_checkouts_receive_distinct_stable_order_codes(): void
+    {
+        $buyer = $this->createUser('active', 'order-code-unique@example.test');
+        $address = $this->createAddress($buyer['user']);
+        $codes = [];
+
+        foreach ([1, 2] as $index) {
+            $variant = $this->createVariant();
+            $this->createCartItem($buyer['user'], $variant, 1);
+            $order = $this->withBearerToken($buyer['token'])
+                ->postJson('/api/orders', ['address_id' => $address->id])
+                ->assertCreated();
+            $codes[] = $order->json('data.order_code');
+        }
+
+        $this->assertNotEmpty($codes[0]);
+        $this->assertNotEmpty($codes[1]);
+        $this->assertNotSame($codes[0], $codes[1]);
     }
 
     public function test_checkout_rolls_back_order_stock_and_cart_if_order_item_creation_fails(): void

@@ -11,7 +11,9 @@ class BrandIndexRequest extends FormRequest
     {
         return [
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
-            'status' => ['sometimes', 'string', Rule::in(['active', 'inactive'])],
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'search' => ['sometimes', 'string', 'max:200'],
+            'status' => ['sometimes', 'string', Rule::in(['active', 'inactive', 'all'])],
         ];
     }
 }

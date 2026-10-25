@@ -320,6 +320,97 @@ class AuthenticationTest extends TestCase
         $this->withToken($adminToken)->getJson('/api/users')->assertUnauthorized();
     }
 
+    public function test_user_management_searches_and_paginates_newest_first(): void
+    {
+        $first = $this->createTestUser('find-me@example.test');
+        $second = $this->createTestUser('other@example.test');
+        $adminToken = $this->createAdminToken();
+        $admin = User::where('role', 'admin')->firstOrFail();
+
+        $this->withBearerToken($adminToken)->getJson('/api/users?search=find-me&per_page=1&page=1')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.email', $first->email)
+            ->assertJsonPath('data.0.status', 'active')
+            ->assertJsonMissingPath('data.0.password');
+
+        $this->withBearerToken($adminToken)->getJson('/api/users?per_page=1&page=1')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 3)
+            ->assertJsonPath('meta.per_page', 1)
+            ->assertJsonPath('data.0.id', $admin->id);
+    }
+
+    public function test_user_management_validates_search_and_pagination_parameters(): void
+    {
+        $this->withBearerToken($this->createAdminToken())
+            ->getJson('/api/users?per_page=1000')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('per_page');
+    }
+
+    public function test_admin_can_create_customer_without_assigning_a_role_or_exposing_password(): void
+    {
+        $token = $this->createAdminToken();
+        $this->withBearerToken($token)->postJson('/api/users', [
+            'name' => 'Created Customer',
+            'email' => 'created@example.test',
+            'password' => 'secret123',
+        ])->assertCreated()
+            ->assertJsonPath('data.role', 'customer')
+            ->assertJsonPath('data.status', 'active')
+            ->assertJsonMissingPath('data.password');
+
+        $created = User::where('email', 'created@example.test')->firstOrFail();
+        $this->assertSame('customer', $created->role);
+        $this->assertSame('active', $created->status);
+        $this->assertTrue(Hash::check('secret123', $created->password));
+
+        $this->withBearerToken($token)->postJson('/api/users', [
+            'name' => 'Escalated Customer',
+            'email' => 'escalated@example.test',
+            'password' => 'secret123',
+            'role' => 'admin',
+        ])->assertUnprocessable()->assertJsonValidationErrors('role');
+    }
+
+    public function test_admin_can_block_and_reactivate_customers_but_not_admin_accounts(): void
+    {
+        $customer = $this->createTestUser('toggle@example.test');
+        $adminToken = $this->createAdminToken();
+
+        $this->withBearerToken($adminToken)->patchJson('/api/users/'.$customer->id.'/status', ['status' => 'blocked'])
+            ->assertOk()->assertJsonPath('data.status', 'blocked');
+        $this->assertSame('blocked', $customer->fresh()->status);
+
+        $this->withBearerToken($adminToken)->patchJson('/api/users/'.$customer->id.'/status', ['status' => 'active'])
+            ->assertOk()->assertJsonPath('data.status', 'active');
+
+        $admin = User::where('role', 'admin')->firstOrFail();
+        $this->withBearerToken($adminToken)->patchJson('/api/users/'.$admin->id.'/status', ['status' => 'blocked'])
+            ->assertUnprocessable();
+        $this->assertSame('active', $admin->fresh()->status);
+    }
+
+    public function test_customer_cannot_block_users_and_admin_cannot_change_their_own_role_or_status(): void
+    {
+        $customer = $this->createTestUser('victim@example.test');
+        $another = $this->createTestUser('another@example.test');
+        $this->withBearerToken($customer->createToken('customer')->plainTextToken)
+            ->patchJson('/api/users/'.$another->id.'/status', ['status' => 'blocked'])
+            ->assertForbidden();
+        $this->assertSame('active', $another->fresh()->status);
+
+        $adminToken = $this->createAdminToken();
+        $admin = User::where('role', 'admin')->firstOrFail();
+        $this->withBearerToken($adminToken)->patchJson('/api/users/'.$admin->id, ['status' => 'blocked'])
+            ->assertUnprocessable();
+        $this->withBearerToken($adminToken)->patchJson('/api/users/'.$admin->id, ['role' => 'customer'])
+            ->assertUnprocessable();
+        $this->assertSame('admin', $admin->fresh()->role);
+        $this->assertSame('active', $admin->fresh()->status);
+    }
+
     public function test_admin_can_patch_only_the_name_without_changing_email_or_password(): void
     {
         $target = $this->createTestUser('target@example.test');
