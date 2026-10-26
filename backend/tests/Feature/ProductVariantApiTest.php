@@ -94,6 +94,7 @@ class ProductVariantApiTest extends TestCase
             $table->foreignId('color_id')->constrained('colors')->restrictOnDelete();
             $table->string('sku', 100)->unique();
             $table->decimal('price', 12, 2)->nullable();
+            $table->decimal('sale_price', 12, 2)->nullable();
             $table->unsignedInteger('stock')->default(0);
             $table->string('status', 20)->default('active');
             $table->timestamps();
@@ -366,6 +367,76 @@ class ProductVariantApiTest extends TestCase
 
         $this->assertSame(2, ProductVariant::count());
         $this->assertDatabaseHas('product_variants', ['id' => $existing->id]);
+    }
+
+    public function test_variant_promotion_validates_both_fields_and_returns_authoritative_pricing(): void
+    {
+        $admin = $this->createUser('admin', 'active', 'variant-promotion@example.test');
+        $product = $this->createProduct('promotion-shirt');
+        $size = Size::create(['name' => 'M']);
+        $color = Color::create(['name' => 'Blue']);
+        $path = '/api/admin/products/'.$product->slug.'/variants';
+
+        $created = $this->withBearerToken($admin['token'])
+            ->postJson($path, [
+                'sku' => 'PROMOTION-SKU',
+                'size_id' => $size->id,
+                'color_id' => $color->id,
+                'price' => '500000.00',
+                'sale_price' => '400000.00',
+                'stock' => 3,
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.original_price', '500000.00')
+            ->assertJsonPath('data.effective_price', '400000.00')
+            ->assertJsonPath('data.is_promotion', true)
+            ->assertJsonPath('data.discount_percentage', 20);
+
+        $variantId = $created->json('data.id');
+        $variantPath = $path.'/'.$variantId;
+
+        foreach ([
+            ['sale_price' => '500000.00'],
+            ['sale_price' => '600000.00'],
+            ['sale_price' => '0.00'],
+            ['price' => '300000.00'],
+            ['price' => null],
+        ] as $invalidUpdate) {
+            $this->withBearerToken($admin['token'])
+                ->patchJson($variantPath, $invalidUpdate)
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors('sale_price');
+        }
+
+        $this->withBearerToken($admin['token'])
+            ->patchJson($variantPath, ['price' => null, 'sale_price' => null])
+            ->assertOk()
+            ->assertJsonPath('data.price', null)
+            ->assertJsonPath('data.sale_price', null)
+            ->assertJsonPath('data.is_promotion', false);
+
+        $this->assertDatabaseHas('product_variants', [
+            'id' => $variantId,
+            'price' => null,
+            'sale_price' => null,
+        ]);
+    }
+
+    public function test_variant_options_route_is_restricted_to_active_admin(): void
+    {
+        $this->getJson('/api/admin/variant-options')->assertUnauthorized();
+        $customer = $this->createUser('customer', 'active', 'variant-options-customer@example.test');
+        $this->withBearerToken($customer['token'])->getJson('/api/admin/variant-options')->assertForbidden();
+
+        $admin = $this->createUser('admin', 'active', 'variant-options-admin@example.test');
+        Size::create(['name' => 'M']);
+        Color::create(['name' => 'Blue']);
+        $this->withBearerToken($admin['token'])
+            ->getJson('/api/admin/variant-options')
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.sizes.0.name', 'M')
+            ->assertJsonPath('data.colors.0.name', 'Blue');
     }
 
     public function test_stock_and_price_must_fit_database_columns(): void

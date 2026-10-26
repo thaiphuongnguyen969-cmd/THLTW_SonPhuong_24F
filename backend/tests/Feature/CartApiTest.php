@@ -108,6 +108,7 @@ class CartApiTest extends TestCase
             $table->foreignId('color_id')->constrained('colors')->restrictOnDelete();
             $table->string('sku', 100)->unique();
             $table->decimal('price', 12, 2)->nullable();
+            $table->decimal('sale_price', 12, 2)->nullable();
             $table->unsignedInteger('stock')->default(0);
             $table->string('status', 20)->default('active');
             $table->timestamps();
@@ -221,16 +222,18 @@ class CartApiTest extends TestCase
         $salePrice = $this->createVariant(stock: 9, variantPrice: null, productPrice: '30.00', salePrice: '20.00');
         $basePrice = $this->createVariant(stock: 9, variantPrice: null, productPrice: '30.00', salePrice: '30.00');
         $invalidSalePrice = $this->createVariant(stock: 9, variantPrice: null, productPrice: '30.00', salePrice: '-1.00');
+        $variantPromotion = $this->createVariant(stock: 9, variantPrice: '30.00', productPrice: '30.00', variantSalePrice: '15.00');
         $this->createCartItem($user['user'], $variantPrice, 2);
         $this->createCartItem($user['user'], $salePrice, 3);
         $this->createCartItem($user['user'], $basePrice, 1);
         $this->createCartItem($user['user'], $invalidSalePrice, 1);
+        $this->createCartItem($user['user'], $variantPromotion, 2);
 
         $this->withBearerToken($user['token'])
             ->getJson('/api/cart')
             ->assertOk()
-            ->assertJsonPath('data.total_quantity', 7)
-            ->assertJsonPath('data.total', '145.00')
+            ->assertJsonPath('data.total_quantity', 9)
+            ->assertJsonPath('data.total', '175.00')
             ->assertJsonPath('data.items.0.unit_price', '12.50')
             ->assertJsonPath('data.items.0.subtotal', '25.00')
             ->assertJsonPath('data.items.0.product.name', $variantPrice->product->name)
@@ -243,7 +246,9 @@ class CartApiTest extends TestCase
             ->assertJsonPath('data.items.1.subtotal', '60.00')
             ->assertJsonPath('data.items.2.unit_price', '30.00')
             ->assertJsonPath('data.items.2.subtotal', '30.00')
-            ->assertJsonPath('data.items.3.unit_price', '30.00');
+            ->assertJsonPath('data.items.3.unit_price', '30.00')
+            ->assertJsonPath('data.items.4.unit_price', '15.00')
+            ->assertJsonPath('data.items.4.subtotal', '30.00');
     }
 
     public function test_large_cart_totals_remain_exact_beyond_php_integer_multiplication_range(): void
@@ -494,7 +499,8 @@ class CartApiTest extends TestCase
         string $status = 'active',
         string $productStatus = 'active',
         string $categoryStatus = 'active',
-        ?string $brandStatus = null
+        ?string $brandStatus = null,
+        ?string $variantSalePrice = null
     ): ProductVariant {
         static $sequence = 0;
         $sequence++;
@@ -532,6 +538,7 @@ class CartApiTest extends TestCase
             'color_id' => $color->id,
             'sku' => 'CART-SKU-'.$sequence,
             'price' => $variantPrice,
+            'sale_price' => $variantSalePrice,
             'stock' => $stock,
             'status' => $status,
         ]);

@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { ProductDetail } from "@/components/shop/ProductDetail";
-import { getProductBySlug } from "@/lib/api/products";
+import { getProductBySlug, getRelatedProducts } from "@/lib/api/products";
 import { getApiErrorMessage, isApiNotFound } from "@/lib/api/client";
 
 export default async function ProductDetailPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -27,5 +27,6 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
     redirect(`/products/${encodeURIComponent(product.slug)}`);
   }
 
-  return <ProductDetail product={product} />;
+  const relatedProducts = await getRelatedProducts(product.slug).catch(() => []);
+  return <ProductDetail product={product} relatedProducts={relatedProducts} />;
 }

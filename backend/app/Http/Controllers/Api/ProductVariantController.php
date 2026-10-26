@@ -8,6 +8,8 @@ use App\Http\Requests\ProductVariantRequest;
 use App\Http\Resources\ProductVariantResource;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Models\Size;
+use App\Models\Color;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -17,7 +19,7 @@ class ProductVariantController extends Controller
     public function index(ProductVariantIndexRequest $request, Product $product)
     {
         $variants = $product->variants()
-            ->with(['size:id,name', 'color:id,name,hex_code'])
+            ->with(['product:id,price,sale_price', 'size:id,name', 'color:id,name,hex_code'])
             ->orderBy('id')
             ->paginate($request->integer('per_page', 15));
 
@@ -56,7 +58,7 @@ class ProductVariantController extends Controller
             return $this->uniqueConstraintResponse($exception) ?? throw $exception;
         }
 
-        $variant->load(['size:id,name', 'color:id,name,hex_code']);
+        $variant->load(['product:id,price,sale_price', 'size:id,name', 'color:id,name,hex_code']);
 
         return (new ProductVariantResource($variant))->additional([
             'success' => true,
@@ -67,7 +69,7 @@ class ProductVariantController extends Controller
     public function show(Product $product, ProductVariant $variant)
     {
         $this->ensureVariantBelongsToProduct($product, $variant);
-        $variant->load(['size:id,name', 'color:id,name,hex_code']);
+        $variant->load(['product:id,price,sale_price', 'size:id,name', 'color:id,name,hex_code']);
 
         return (new ProductVariantResource($variant))->additional([
             'success' => true,
@@ -129,7 +131,7 @@ class ProductVariantController extends Controller
             return $this->uniqueConstraintResponse($exception) ?? throw $exception;
         }
 
-        $variant->refresh()->load(['size:id,name', 'color:id,name,hex_code']);
+        $variant->refresh()->load(['product:id,price,sale_price', 'size:id,name', 'color:id,name,hex_code']);
 
         return (new ProductVariantResource($variant))->additional([
             'success' => true,
@@ -181,6 +183,17 @@ class ProductVariantController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Xóa biến thể thành công.',
+        ]);
+    }
+
+    public function options(): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'sizes' => Size::query()->orderBy('sort_order')->orderBy('id')->get(['id', 'name']),
+                'colors' => Color::query()->orderBy('name')->get(['id', 'name', 'hex_code']),
+            ],
         ]);
     }
 

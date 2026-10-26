@@ -56,6 +56,14 @@ class ProductVariantRequest extends FormRequest
                 'min:0',
                 'max:9999999999.99',
             ],
+            'sale_price' => [
+                'sometimes',
+                'nullable',
+                'numeric',
+                'decimal:0,2',
+                'gt:0',
+                'max:9999999999.99',
+            ],
             'stock' => [$patch || ! $put ? 'sometimes' : 'required', 'integer', 'min:0', 'max:4294967295'],
             'expected_stock' => [
                 $variant ? 'sometimes' : 'prohibited',
@@ -71,7 +79,7 @@ class ProductVariantRequest extends FormRequest
     {
         return [
             function (Validator $validator): void {
-                $allowedFields = ['sku', 'size_id', 'color_id', 'price', 'stock', 'expected_stock', 'status'];
+                $allowedFields = ['sku', 'size_id', 'color_id', 'price', 'sale_price', 'stock', 'expected_stock', 'status'];
 
                 foreach (array_diff(array_keys($this->all()), $allowedFields) as $field) {
                     $validator->errors()->add($field, 'Trường này không được phép gửi.');
@@ -96,6 +104,19 @@ class ProductVariantRequest extends FormRequest
 
                 if ($this->isMethod('patch') && $this->all() === []) {
                     $validator->errors()->add('variant', 'PATCH phải gửi ít nhất một trường được phép cập nhật.');
+                }
+
+                if (! $validator->errors()->has('price') && ! $validator->errors()->has('sale_price')) {
+                    /** @var ProductVariant|null $variant */
+                    $variant = $this->route('variant');
+                    $price = $this->exists('price') ? $this->input('price') : $variant?->price;
+                    $salePrice = $this->exists('sale_price') ? $this->input('sale_price') : $variant?->sale_price;
+
+                    if ($salePrice !== null && $price === null) {
+                        $validator->errors()->add('sale_price', 'Cần có giá gốc trước khi đặt giá khuyến mãi.');
+                    } elseif ($salePrice !== null && (float) $salePrice >= (float) $price) {
+                        $validator->errors()->add('sale_price', 'Giá khuyến mãi phải thấp hơn giá gốc của biến thể.');
+                    }
                 }
 
                 if (

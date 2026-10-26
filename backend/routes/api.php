@@ -20,7 +20,9 @@ Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:lo
 
 Route::apiResource('categories', CategoryController::class)->only(['index', 'show']);
 Route::apiResource('brands', BrandController::class)->only(['index', 'show']);
+Route::get('/products/hot', [ProductController::class, 'hot']);
 Route::apiResource('products', ProductController::class)->only(['index', 'show']);
+Route::get('/products/{product}/related', [ProductController::class, 'related']);
 Route::get('/posts', [PostController::class, 'publicIndex']);
 Route::get('/posts/{slug}', [PostController::class, 'publicShow'])->where('slug', '[a-z0-9]+(?:-[a-z0-9]+)*');
 Route::get('/menus', [MenuController::class, 'publicIndex']);
@@ -66,6 +68,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::apiResource('categories', CategoryController::class)->only(['store', 'update', 'destroy']);
         Route::apiResource('brands', BrandController::class)->only(['store', 'update', 'destroy']);
         Route::apiResource('products', ProductController::class)->only(['store', 'update', 'destroy']);
+        Route::get('/admin/variant-options', [ProductVariantController::class, 'options']);
 
         Route::prefix('admin')->group(function () {
             Route::get('/trash', [AdminTrashController::class, 'index']);

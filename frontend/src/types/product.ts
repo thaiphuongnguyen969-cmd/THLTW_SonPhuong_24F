@@ -15,6 +15,11 @@ export type ProductVariant = {
   color: { id: number; name: string; hex_code?: string | null };
   sku?: string;
   price?: string | number | null;
+  sale_price?: string | number | null;
+  original_price?: string | number | null;
+  effective_price?: string | number | null;
+  is_promotion?: boolean;
+  discount_percentage?: number | null;
   available?: boolean;
   stock?: number;
   status?: string;
@@ -37,6 +42,14 @@ export type Product = {
   description?: string | null;
   price: number | string;
   sale_price?: number | string | null;
+  original_price?: number | string | null;
+  effective_price?: number | string | null;
+  price_from?: boolean;
+  promotion_price?: number | string | null;
+  has_promotion?: boolean;
+  is_promotion?: boolean;
+  discount_percentage?: number | null;
+  total_sold?: number;
   status: ProductStatus;
   image?: string | null;
   quantity?: number | null;

@@ -8,9 +8,10 @@ import { formatPriceValue } from "@/lib/format-price-value";
 import { getProductImageUrl } from "@/lib/product-image-url";
 import { useShopCart } from "@/lib/shop-cart-context";
 import { useCustomerAuth } from "@/lib/customer-auth-context";
+import { ProductCard } from "@/components/shop/ProductCard";
 import type { Product } from "@/types/product";
 
-export function ProductDetail({ product }: { product: Product }) {
+export function ProductDetail({ product, relatedProducts = [] }: { product: Product; relatedProducts?: Product[] }) {
   const { addItem, mutating, error: cartError } = useShopCart();
   const auth = useCustomerAuth();
   const router = useRouter();
@@ -23,9 +24,11 @@ export function ProductDetail({ product }: { product: Product }) {
   const selectedVariant = variants.find((variant) => variant.id === selectedVariantId);
   const image = getProductImageUrl(product.image ?? product.images?.[0]?.image_url);
   const [failedImage, setFailedImage] = useState<string | null>(null);
-  const regularPrice = selectedVariant?.price ?? product.price;
-  const price = product.sale_price ?? regularPrice;
-  const hasSalePrice = product.sale_price !== null && product.sale_price !== undefined;
+  const pricing = selectedVariant ?? product;
+  const regularPrice = pricing.original_price ?? (selectedVariant?.price ?? product.price);
+  const price = pricing.effective_price ?? (selectedVariant?.price ?? product.price);
+  const hasSalePrice = pricing.is_promotion === true || (!selectedVariant && product.has_promotion === true);
+  const discountPercentage = pricing.discount_percentage;
   const canAdd = selectedVariant?.available === true;
 
   async function handleAddToCart() {
@@ -48,6 +51,7 @@ export function ProductDetail({ product }: { product: Product }) {
   }
 
   return (
+    <>
     <main className="mx-auto grid max-w-7xl gap-8 px-4 py-8 sm:px-6 md:py-12 lg:grid-cols-2 lg:px-8">
       <div className="flex min-h-72 items-center justify-center overflow-hidden rounded-[2rem] bg-stone-100">
         {image && failedImage !== image ? <Image unoptimized width={1200} height={1200} src={image} alt={product.name} className="max-h-[680px] w-full object-contain" onError={() => setFailedImage(image)} /> : <p className="p-10 text-sm text-zinc-500">Hình ảnh sản phẩm hiện không khả dụng.</p>}
@@ -56,7 +60,7 @@ export function ProductDetail({ product }: { product: Product }) {
         <Link href="/products" className="text-sm text-zinc-500 hover:text-zinc-900">← Quay lại sản phẩm</Link>
         <p className="mt-6 text-xs uppercase tracking-widest text-zinc-500">{product.brand?.name ?? "Sơn Phương Model"}</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">{product.name}</h1>
-        <div className="mt-5 flex flex-wrap items-baseline gap-3"><p className="text-3xl font-semibold">{formatPriceValue(price)}</p>{hasSalePrice && <p className="text-lg text-zinc-400 line-through">{formatPriceValue(regularPrice)}</p>}</div>
+        <div className="mt-5 flex flex-wrap items-baseline gap-3"><p className="text-3xl font-semibold">{!selectedVariant && product.price_from ? "Từ " : ""}{formatPriceValue(price)}</p>{hasSalePrice && regularPrice !== price && <p className="text-lg text-zinc-400 line-through">{formatPriceValue(regularPrice)}</p>}{hasSalePrice && <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700">Khuyến mãi</span>}{hasSalePrice && discountPercentage != null && <span className="text-sm font-medium text-red-700">Giảm {discountPercentage}%</span>}</div>
         <p className="mt-5 whitespace-pre-line leading-7 text-zinc-600">{product.description || "Chưa có mô tả cho sản phẩm này."}</p>
         {product.category && <p className="mt-4 text-sm text-zinc-500">Danh mục: {product.category.name}</p>}
 
@@ -91,5 +95,14 @@ export function ProductDetail({ product }: { product: Product }) {
         {cartError && <p role="alert" className="mt-3 text-sm text-red-700">{cartError}</p>}
       </section>
     </main>
+    {relatedProducts.length > 0 && <section className="bg-white">
+      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+        <h2 className="mb-6 text-2xl font-semibold">Sản phẩm liên quan</h2>
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          {relatedProducts.slice(0, 4).map((related) => <ProductCard key={related.id} product={related} />)}
+        </div>
+      </div>
+    </section>}
+    </>
   );
 }

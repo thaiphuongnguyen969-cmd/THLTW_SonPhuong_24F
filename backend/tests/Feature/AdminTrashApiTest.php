@@ -118,6 +118,8 @@ class AdminTrashApiTest extends TestCase
             $table->foreignId('size_id')->constrained('sizes')->restrictOnDelete();
             $table->foreignId('color_id')->constrained('colors')->restrictOnDelete();
             $table->string('sku')->unique();
+            $table->decimal('price', 12, 2)->nullable();
+            $table->decimal('sale_price', 12, 2)->nullable();
             $table->timestamps();
         });
         Schema::create('product_images', function (Blueprint $table): void {

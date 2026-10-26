@@ -16,23 +16,39 @@ class CartPriceCalculator
             throw new LogicException('Product variant is missing its product relation.');
         }
 
-        if ($variant->price !== null) {
-            if ($this->toMinorUnits($variant->price) < 0) {
-                throw new LogicException('Stored variant price cannot be negative.');
-            }
+        return $this->quote($product, $variant)['effective_price'];
+    }
 
-            return (string) $variant->price;
+    /**
+     * @return array{original_price: string, effective_price: string, is_promotion: bool, discount_percentage: int}
+     */
+    public function quote(Product $product, ?ProductVariant $variant = null): array
+    {
+        $originalPrice = $variant?->price ?? $product->price;
+        $originalMinor = $this->toMinorUnits($originalPrice);
+
+        if ($originalMinor < 0) {
+            throw new LogicException('Stored product price cannot be negative.');
         }
 
-        if ($product->sale_price !== null) {
-            $salePrice = $this->toMinorUnits($product->sale_price);
+        $salePrice = $variant?->price !== null
+            ? $variant->sale_price
+            : $product->sale_price;
+        $saleMinor = $salePrice === null ? null : $this->toMinorUnits($salePrice);
+        $saleMustBePositive = $variant?->price !== null;
+        $hasPromotion = $saleMinor !== null
+            && ($saleMustBePositive ? $saleMinor > 0 : $saleMinor >= 0)
+            && $saleMinor < $originalMinor;
+        $effectiveMinor = $hasPromotion ? $saleMinor : $originalMinor;
 
-            if ($salePrice >= 0 && $salePrice < $this->toMinorUnits($product->price)) {
-                return (string) $product->sale_price;
-            }
-        }
-
-        return (string) $product->price;
+        return [
+            'original_price' => $this->formatMinorUnits($originalMinor),
+            'effective_price' => $this->formatMinorUnits($effectiveMinor),
+            'is_promotion' => $hasPromotion,
+            'discount_percentage' => $hasPromotion && $originalMinor > 0
+                ? (int) round((($originalMinor - $effectiveMinor) * 100) / $originalMinor)
+                : 0,
+        ];
     }
 
     public function isPurchasable(ProductVariant $variant): bool

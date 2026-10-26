@@ -1,39 +1,65 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ProductCard } from "@/components/shop/ProductCard";
+import { ProductSection } from "@/components/shop/ProductSection";
 import { getAllBrands } from "@/lib/api/brands";
 import { getAllCategories } from "@/lib/api/categories";
-import { getProducts } from "@/lib/api/products";
+import { getHotProducts, getProducts } from "@/lib/api/products";
 import { getApiErrorMessage } from "@/lib/api/client";
 import type { Brand } from "@/types/brand";
 import type { Category } from "@/types/category";
 import type { Product } from "@/types/product";
 
+type LoadingState = {
+  new: boolean;
+  promotions: boolean;
+  hot: boolean;
+  categories: boolean;
+  brands: boolean;
+};
+
 export default function HomePage() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [promotions, setPromotions] = useState<Product[]>([]);
+  const [hotProducts, setHotProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [loading, setLoading] = useState<LoadingState>({
+    new: true,
+    promotions: true,
+    hot: true,
+    categories: true,
+    brands: true,
+  });
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let active = true;
-    void Promise.all([
-      getProducts({ page: 1, per_page: 4, sort_by: "created_at", sort_direction: "desc" }),
-      getAllCategories(),
-      getAllBrands(),
-    ]).then(([productResponse, categoryRows, brandRows]) => {
-      if (!active) return;
-      setProducts(productResponse.data);
-      setCategories(categoryRows);
-      setBrands(brandRows);
-    }).catch((cause: unknown) => {
-      if (active) setError(getApiErrorMessage(cause, "Không thể tải dữ liệu cửa hàng."));
-    }).finally(() => {
-      if (active) setLoading(false);
-    });
+    const load = <T,>(key: keyof LoadingState, request: Promise<T>, onSuccess: (value: T) => void) => {
+      void request
+        .then((value) => {
+          if (active) onSuccess(value);
+        })
+        .catch((cause: unknown) => {
+          if (active) {
+            setErrors((current) => ({
+              ...current,
+              [key]: getApiErrorMessage(cause, "Không thể tải dữ liệu."),
+            }));
+          }
+        })
+        .finally(() => {
+          if (active) setLoading((current) => ({ ...current, [key]: false }));
+        });
+    };
+
+    load("new", getProducts({ page: 1, per_page: 4, sort_by: "created_at", sort_direction: "desc" }), (result) => setProducts(result.data));
+    load("promotions", getProducts({ page: 1, per_page: 4, promotion: true }), (result) => setPromotions(result.data));
+    load("hot", getHotProducts(), setHotProducts);
+    load("categories", getAllCategories(), setCategories);
+    load("brands", getAllBrands(), setBrands);
+
     return () => { active = false; };
   }, []);
 
@@ -54,33 +80,28 @@ export default function HomePage() {
         </div>
       </section>
 
-      {error && <p role="alert" className="mx-auto max-w-7xl px-4 py-4 text-sm text-red-800">{error}</p>}
+      <ProductSection title="Sản phẩm mới" eyebrow="Mới cập nhật" products={products} loading={loading.new} error={errors.new} emptyMessage="Không có sản phẩm mới." href="/products?sort=featured" />
+      <ProductSection title="Sản phẩm khuyến mãi" products={promotions} loading={loading.promotions} error={errors.promotions} emptyMessage="Hiện chưa có sản phẩm khuyến mãi." hideWhenEmpty />
+      <ProductSection title="Sản phẩm hot" products={hotProducts} loading={loading.hot} error={errors.hot} emptyMessage="Chưa có dữ liệu sản phẩm bán chạy." hideWhenEmpty />
 
-      <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+      <section id="categories" className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
         <div className="mb-6 flex items-end justify-between gap-4">
           <div><p className="text-xs uppercase tracking-widest text-zinc-500">Khám phá</p><h2 className="mt-2 text-2xl font-semibold">Danh mục</h2></div>
           <Link href="/products#categories" className="text-sm font-medium text-zinc-700">Xem danh mục</Link>
         </div>
-        {loading ? <p role="status" className="rounded-2xl border border-zinc-200 bg-white p-8 text-center text-sm text-zinc-500">Đang tải danh mục…</p> : categories.length === 0 ? (
+        {loading.categories ? <p role="status" className="rounded-2xl border border-zinc-200 bg-white p-8 text-center text-sm text-zinc-500">Đang tải danh mục…</p> : errors.categories ? <p role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center text-sm text-red-800">{errors.categories}</p> : categories.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-zinc-300 bg-white p-8 text-center text-sm text-zinc-500">Chưa có danh mục để hiển thị.</p>
         ) : <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{categories.map((category) => (
-          <Link key={category.id} href={`/products?category=${encodeURIComponent(category.slug)}`} className="rounded-2xl border border-zinc-200 bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-md">
+          <Link key={category.id} href={"/products?category=" + encodeURIComponent(category.slug)} className="rounded-2xl border border-zinc-200 bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-md">
             <span className="text-xs text-zinc-500">Danh mục</span><h3 className="mt-2 text-lg font-medium">{category.name}</h3>
           </Link>
         ))}</div>}
       </section>
 
-      <section className="bg-white">
-        <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-          <div className="mb-6 flex items-end justify-between gap-4"><div><p className="text-xs uppercase tracking-widest text-zinc-500">Mới cập nhật</p><h2 className="mt-2 text-2xl font-semibold">Sản phẩm mới</h2></div><Link href="/products" className="text-sm font-medium text-zinc-700">Xem tất cả</Link></div>
-          {loading ? <p role="status" className="rounded-2xl border border-zinc-200 p-8 text-center text-sm text-zinc-500">Đang tải sản phẩm…</p> : products.length === 0 ? <p className="rounded-2xl border border-dashed border-zinc-300 p-8 text-center text-sm text-zinc-500">Chưa có sản phẩm để hiển thị.</p> : <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">{products.map((product) => <ProductCard key={product.id} product={product} />)}</div>}
-        </div>
-      </section>
-
       <section className="border-y border-black/5 bg-white">
         <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
           <div className="mb-6"><p className="text-xs uppercase tracking-widest text-zinc-500">Khám phá</p><h2 className="mt-2 text-2xl font-semibold">Thương hiệu</h2></div>
-          {loading ? <p role="status" className="rounded-2xl border border-zinc-200 p-8 text-center text-sm text-zinc-500">Đang tải thương hiệu…</p> : brands.length === 0 ? <p className="rounded-2xl border border-dashed border-zinc-300 p-8 text-center text-sm text-zinc-500">Chưa có thương hiệu để hiển thị.</p> : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{brands.map((brand) => <Link key={brand.id} href={`/products?brand=${encodeURIComponent(brand.slug)}`} className="rounded-xl border border-zinc-200 bg-stone-50 px-4 py-5 text-center font-medium hover:bg-stone-100">{brand.name}</Link>)}</div>}
+          {loading.brands ? <p role="status" className="rounded-2xl border border-zinc-200 p-8 text-center text-sm text-zinc-500">Đang tải thương hiệu…</p> : errors.brands ? <p role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center text-sm text-red-800">{errors.brands}</p> : brands.length === 0 ? <p className="rounded-2xl border border-dashed border-zinc-300 p-8 text-center text-sm text-zinc-500">Chưa có thương hiệu để hiển thị.</p> : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{brands.map((brand) => <Link key={brand.id} href={"/products?brand=" + encodeURIComponent(brand.slug)} className="rounded-xl border border-zinc-200 bg-stone-50 px-4 py-5 text-center font-medium hover:bg-stone-100">{brand.name}</Link>)}</div>}
         </div>
       </section>
 

@@ -102,6 +102,7 @@ class OrderApiTest extends TestCase
             $table->foreignId('color_id')->constrained()->restrictOnDelete();
             $table->string('sku', 100)->unique();
             $table->decimal('price', 12, 2)->nullable();
+            $table->decimal('sale_price', 12, 2)->nullable();
             $table->unsignedInteger('stock')->default(0);
             $table->string('status', 20)->default('active');
             $table->timestamps();
@@ -614,6 +615,48 @@ class OrderApiTest extends TestCase
         $this->assertSame(0, Order::query()->count());
     }
 
+    public function test_variant_promotion_price_flows_through_cart_checkout_and_order_snapshot(): void
+    {
+        $buyer = $this->createUser('active', 'variant-sale-order@example.test');
+        $address = $this->createAddress($buyer['user']);
+        $variant = $this->createVariant([
+            'variant' => ['price' => '500000.00', 'sale_price' => '400000.00'],
+            'product' => ['price' => '600000.00'],
+            'stock' => 5,
+        ]);
+        $this->createCartItem($buyer['user'], $variant, 2);
+
+        $this->withBearerToken($buyer['token'])
+            ->getJson('/api/cart')
+            ->assertOk()
+            ->assertJsonPath('data.items.0.unit_price', '400000.00')
+            ->assertJsonPath('data.items.0.subtotal', '800000.00');
+
+        $response = $this->withBearerToken($buyer['token'])
+            ->postJson('/api/orders', ['address_id' => $address->id])
+            ->assertCreated()
+            ->assertJsonPath('data.amounts.subtotal', '800000.00')
+            ->assertJsonPath('data.amounts.total', '800000.00')
+            ->assertJsonPath('data.items.0.unit_price', '400000.00');
+
+        $orderId = $response->json('data.id');
+        $this->assertDatabaseHas('order_items', [
+            'order_id' => $orderId,
+            'product_variant_id' => $variant->id,
+            'price' => '400000.00',
+            'quantity' => 2,
+            'subtotal' => '800000.00',
+        ]);
+
+        $variant->update(['sale_price' => '350000.00']);
+        $this->assertDatabaseHas('order_items', [
+            'order_id' => $orderId,
+            'product_variant_id' => $variant->id,
+            'price' => '400000.00',
+            'subtotal' => '800000.00',
+        ]);
+    }
+
     public function test_checkout_recalculates_current_price_and_creates_snapshots_payment_and_history(): void
     {
         $buyer = $this->createUser('active', 'order-success@example.test');
@@ -995,6 +1038,7 @@ class OrderApiTest extends TestCase
             'price' => array_key_exists('price', $overrides['variant'] ?? [])
                 ? $overrides['variant']['price']
                 : '100.00',
+            'sale_price' => $overrides['variant']['sale_price'] ?? null,
             'stock' => $overrides['stock'] ?? 5,
             'status' => $overrides['variant']['status'] ?? 'active',
         ]);

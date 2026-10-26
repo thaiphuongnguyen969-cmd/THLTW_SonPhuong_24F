@@ -26,5 +26,5 @@ const fields: AdminField[] = [
 ];
 
 export default function AdminProductsPage() {
-  return <AdminResourceManager title="Quản lý sản phẩm" description="Danh sách sản phẩm từ API Laravel. Biến thể sản phẩm được quản lý riêng." resource={{ list: listAdminProducts, create: createAdminProduct, update: updateAdminProduct, remove: deleteAdminProduct, loadFieldOptions: getAdminProductFieldOptions }} columns={columns} fields={fields} emptyMessage="Chưa có sản phẩm." trashHref="/admin/trash?type=product" />;
+  return <AdminResourceManager title="Quản lý sản phẩm" description="Danh sách sản phẩm từ API Laravel. Quản lý giá và biến thể riêng cho từng sản phẩm." resource={{ list: listAdminProducts, create: createAdminProduct, update: updateAdminProduct, remove: deleteAdminProduct, loadFieldOptions: getAdminProductFieldOptions }} columns={columns} fields={fields} emptyMessage="Chưa có sản phẩm." trashHref="/admin/trash?type=product" rowAction={{ label: "Biến thể", href: (record) => "/admin/products/" + encodeURIComponent(String(record.slug)) + "/variants" }} />;
 }

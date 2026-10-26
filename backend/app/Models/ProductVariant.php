@@ -17,6 +17,7 @@ class ProductVariant extends Model
         'color_id',
         'sku',
         'price',
+        'sale_price',
         'stock',
         'status',
     ];
@@ -26,6 +27,7 @@ class ProductVariant extends Model
         'size_id' => 'integer',
         'color_id' => 'integer',
         'price' => 'decimal:2',
+        'sale_price' => 'decimal:2',
         'stock' => 'integer',
     ];
 

@@ -30,6 +30,7 @@ export type AdminResource = {
 
 export function AdminResourceManager({
   title, description, resource, columns, fields, emptyMessage, trashHref,
+  rowAction,
 }: {
   title: string;
   description: string;
@@ -38,6 +39,7 @@ export function AdminResourceManager({
   fields: AdminField[];
   emptyMessage: string;
   trashHref: string;
+  rowAction?: { label: string; href: (record: AdminRecord) => string };
 }) {
   const [rows, setRows] = useState<AdminRecord[]>([]);
   const [options, setOptions] = useState<Record<string, AdminField["options"]>>({});
@@ -221,6 +223,7 @@ export function AdminResourceManager({
                 </td>;
               })}
               <td className="whitespace-nowrap px-4 py-3">
+                {rowAction && <Link href={rowAction.href(row)} className="mr-3 text-sm font-medium underline">{rowAction.label}</Link>}
                 <button type="button" disabled={busy} onClick={() => startEdit(row)} className="mr-3 text-sm font-medium underline disabled:opacity-50">Sửa</button>
                 <button type="button" disabled={busy} onClick={() => void deleteRecord(row)} className="text-sm font-medium text-red-700 underline disabled:opacity-50">Xóa</button>
               </td>

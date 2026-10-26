@@ -10,10 +10,12 @@ use App\Models\ProductImage;
 use App\Models\ProductVariant;
 use App\Models\Promotion;
 use App\Models\Size;
+use App\Models\Order;
 use App\Models\User;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class CatalogApiTest extends TestCase
@@ -117,6 +119,7 @@ class CatalogApiTest extends TestCase
             $table->foreignId('color_id')->constrained('colors')->restrictOnDelete();
             $table->string('sku', 100)->unique();
             $table->decimal('price', 12, 2)->nullable();
+            $table->decimal('sale_price', 12, 2)->nullable();
             $table->unsignedInteger('stock')->default(0);
             $table->string('status', 20)->default('active');
             $table->timestamps();
@@ -145,6 +148,31 @@ class CatalogApiTest extends TestCase
             $table->foreignId('product_id')->constrained('products')->cascadeOnDelete();
             $table->unique(['promotion_id', 'product_id']);
         });
+
+        Schema::create('orders', function (Blueprint $table): void {
+            $table->id();
+            $table->decimal('total', 12, 2);
+            $table->string('status', 50);
+            $table->string('address');
+            $table->string('phone', 20);
+            $table->timestamps();
+        });
+        Schema::create('order_items', function (Blueprint $table): void {
+            $table->id();
+            $table->foreignId('order_id')->constrained('orders')->cascadeOnDelete();
+            $table->foreignId('product_variant_id')->nullable()->constrained('product_variants')->nullOnDelete();
+            $table->string('product_name');
+            $table->decimal('price', 12, 2);
+            $table->unsignedInteger('quantity');
+            $table->decimal('subtotal', 12, 2);
+            $table->timestamps();
+        });
+        Schema::create('order_status_histories', function (Blueprint $table): void {
+            $table->id();
+            $table->foreignId('order_id')->constrained('orders')->cascadeOnDelete();
+            $table->string('to_status', 50);
+            $table->timestamp('created_at')->nullable();
+        });
     }
 
     protected function tearDown(): void
@@ -152,6 +180,9 @@ class CatalogApiTest extends TestCase
         Schema::disableForeignKeyConstraints();
 
         foreach ([
+            'order_status_histories',
+            'order_items',
+            'orders',
             'promotion_products',
             'promotions',
             'product_variants',
@@ -673,6 +704,136 @@ class CatalogApiTest extends TestCase
         $this->withBearerToken($admin['token'])
             ->deleteJson('/api/brands/unused')
             ->assertOk();
+    }
+
+    public function test_catalog_promotion_uses_checkout_effective_variant_price(): void
+    {
+        $category = Category::create(['name' => 'Promo Category', 'slug' => 'promo-category']);
+        $brand = Brand::create(['name' => 'Promo Brand', 'slug' => 'promo-brand']);
+        $this->makeMerchandisingProduct($category, $brand, 'valid-promo', '80.00', null);
+        $this->makeMerchandisingProduct($category, $brand, 'variant-overrides-sale', '80.00', '70.00');
+        $this->makeMerchandisingProduct($category, $brand, 'variant-sale-promo', null, '500000.00', '400000.00');
+        $this->makeMerchandisingProduct($category, $brand, 'equal-sale', '100.00', null);
+        $this->makeMerchandisingProduct($category, $brand, 'above-sale', '120.00', null);
+        $this->makeMerchandisingProduct($category, $brand, 'no-sale', null, null);
+
+        $this->getJson('/api/products?promotion=true&per_page=10')
+            ->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonFragment([
+                'slug' => 'valid-promo',
+                'effective_price' => '80.00',
+                'promotion_price' => '80.00',
+                'has_promotion' => true,
+            ])
+            ->assertJsonFragment([
+                'slug' => 'variant-sale-promo',
+                'effective_price' => '400000.00',
+                'promotion_price' => '400000.00',
+                'has_promotion' => true,
+            ]);
+    }
+
+    public function test_hot_products_only_count_delivered_orders_from_last_30_days(): void
+    {
+        $category = Category::create(['name' => 'Hot Category', 'slug' => 'hot-category']);
+        $brand = Brand::create(['name' => 'Hot Brand', 'slug' => 'hot-brand']);
+        [$hotProduct, $hotVariant] = $this->makeMerchandisingProduct($category, $brand, 'hot-valid', null, '100.00');
+        [$oldProduct, $oldVariant] = $this->makeMerchandisingProduct($category, $brand, 'hot-old', null, '100.00');
+        [$cancelledProduct, $cancelledVariant] = $this->makeMerchandisingProduct($category, $brand, 'hot-cancelled', null, '100.00');
+
+        $this->recordMerchandisingOrder($hotVariant->id, 'Đã giao hàng', 2, now()->subDays(10));
+        $this->recordMerchandisingOrder($oldVariant->id, 'Đã giao hàng', 20, now()->subDays(31));
+        $this->recordMerchandisingOrder($cancelledVariant->id, 'Đã hủy', 30, now()->subDays(2));
+
+        $this->getJson('/api/products/hot')
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $hotProduct->id)
+            ->assertJsonPath('data.0.total_sold', 2)
+            ->assertJsonMissing(['id' => $oldProduct->id])
+            ->assertJsonMissing(['id' => $cancelledProduct->id]);
+    }
+
+    public function test_related_products_exclude_current_and_rank_category_then_brand_then_newest(): void
+    {
+        $category = Category::create(['name' => 'Related A', 'slug' => 'related-a']);
+        $otherCategory = Category::create(['name' => 'Related B', 'slug' => 'related-b']);
+        $brand = Brand::create(['name' => 'Related Brand', 'slug' => 'related-brand']);
+        $otherBrand = Brand::create(['name' => 'Other Related Brand', 'slug' => 'other-related-brand']);
+        [$current] = $this->makeMerchandisingProduct($category, $brand, 'related-current', null, '100.00');
+        [$sameCategoryOne] = $this->makeMerchandisingProduct($category, $otherBrand, 'related-category-one', null, '100.00');
+        [$sameCategoryTwo] = $this->makeMerchandisingProduct($category, $brand, 'related-category-two', null, '100.00');
+        [$sameBrand] = $this->makeMerchandisingProduct($otherCategory, $brand, 'related-brand', null, '100.00');
+        [$other] = $this->makeMerchandisingProduct($otherCategory, $otherBrand, 'related-other', null, '100.00');
+        $inactive = $this->makeMerchandisingProduct($otherCategory, $brand, 'related-inactive', null, '100.00')[0];
+        $inactive->forceFill(['status' => 'inactive'])->save();
+
+        $response = $this->getJson('/api/products/'.$current->slug.'/related')
+            ->assertOk()
+            ->assertJsonCount(4, 'data');
+        $slugs = collect($response->json('data'))->pluck('slug')->all();
+
+        $this->assertNotContains($current->slug, $slugs);
+        $this->assertNotContains($inactive->slug, $slugs);
+        $this->assertSame($sameCategoryTwo->slug, $slugs[0]);
+        $this->assertSame($sameCategoryOne->slug, $slugs[1]);
+        $this->assertSame($sameBrand->slug, $slugs[2]);
+        $this->assertSame($other->slug, $slugs[3]);
+    }
+
+    /** @return array{Product, ProductVariant} */
+    private function makeMerchandisingProduct(Category $category, Brand $brand, string $slug, ?string $salePrice, ?string $variantPrice, ?string $variantSalePrice = null): array
+    {
+        $product = Product::create([
+            'category_id' => $category->id,
+            'brand_id' => $brand->id,
+            'name' => $slug,
+            'slug' => $slug,
+            'price' => '100.00',
+            'sale_price' => $salePrice,
+            'status' => 'active',
+        ]);
+        $size = Size::firstOrCreate(['name' => 'Merch M']);
+        $color = Color::firstOrCreate(['name' => 'Merch Blue']);
+        $variant = ProductVariant::create([
+            'product_id' => $product->id,
+            'size_id' => $size->id,
+            'color_id' => $color->id,
+            'sku' => 'MERCH-'.uniqid(),
+            'price' => $variantPrice,
+            'sale_price' => $variantSalePrice,
+            'stock' => 5,
+            'status' => 'active',
+        ]);
+
+        return [$product, $variant];
+    }
+
+    private function recordMerchandisingOrder(int $variantId, string $status, int $quantity, \Illuminate\Support\Carbon $deliveredAt): void
+    {
+        $order = Order::create([
+            'total' => (string) ($quantity * 100),
+            'status' => $status,
+            'address' => 'Test address',
+            'phone' => '0123456789',
+        ]);
+        DB::table('order_items')->insert([
+            'order_id' => $order->id,
+            'product_variant_id' => $variantId,
+            'product_name' => 'Merch test item',
+            'price' => '100.00',
+            'quantity' => $quantity,
+            'subtotal' => (string) ($quantity * 100),
+            'created_at' => $deliveredAt,
+            'updated_at' => $deliveredAt,
+        ]);
+        DB::table('order_status_histories')->insert([
+            'order_id' => $order->id,
+            'to_status' => $status,
+            'created_at' => $deliveredAt,
+        ]);
     }
 
     /**
