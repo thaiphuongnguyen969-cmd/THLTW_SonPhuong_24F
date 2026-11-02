@@ -2,18 +2,19 @@
 
 namespace Tests\Feature;
 
+use App\Models\Banner;
 use App\Models\Brand;
 use App\Models\CartItem;
 use App\Models\Category;
+use App\Models\Menu;
 use App\Models\OrderItem;
+use App\Models\Post;
 use App\Models\Product;
 use App\Models\ProductImage;
 use App\Models\ProductVariant;
-use App\Models\Post;
-use App\Models\Menu;
-use App\Models\Review;
 use App\Models\User;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -65,6 +66,18 @@ class AdminTrashApiTest extends TestCase
             $table->string('url', 2048);
             $table->unsignedInteger('sort_order')->default(0);
             $table->string('status', 20)->default('active');
+            $table->timestamps();
+            $table->softDeletes();
+        });
+        Schema::create('banners', function (Blueprint $table): void {
+            $table->id();
+            $table->string('title', 255);
+            $table->text('description')->nullable();
+            $table->string('image', 255);
+            $table->string('link_url', 2048)->nullable();
+            $table->string('button_text', 100)->nullable();
+            $table->string('status', 20)->default('active');
+            $table->unsignedInteger('sort_order')->default(0);
             $table->timestamps();
             $table->softDeletes();
         });
@@ -154,7 +167,7 @@ class AdminTrashApiTest extends TestCase
         Schema::disableForeignKeyConstraints();
         foreach ([
             'reviews', 'cart_items', 'order_items', 'product_images', 'product_variants', 'colors', 'sizes',
-            'posts', 'menus', 'products', 'brands', 'categories', 'personal_access_tokens', 'users',
+            'posts', 'menus', 'banners', 'products', 'brands', 'categories', 'personal_access_tokens', 'users',
         ] as $table) {
             Schema::dropIfExists($table);
         }
@@ -181,17 +194,19 @@ class AdminTrashApiTest extends TestCase
         $product = $this->createProduct($category, 'Trash Tee');
         $post = Post::create(['title' => 'Trash Article', 'slug' => 'trash-article', 'content' => 'Content']);
         $menu = Menu::create(['name' => 'Trash Menu', 'url' => '/trash-menu']);
+        $banner = Banner::create(['title' => 'Trash Banner', 'image' => 'banners/trash.jpg']);
         $category->delete();
         $brand->delete();
         $product->delete();
         $post->delete();
         $menu->delete();
+        $banner->delete();
 
         $admin = $this->createAdmin();
         $this->withToken($admin->createToken('admin')->plainTextToken)
             ->getJson('/api/admin/trash?per_page=2')
             ->assertOk()
-            ->assertJsonPath('meta.total', 5)
+            ->assertJsonPath('meta.total', 6)
             ->assertJsonPath('meta.per_page', 2)
             ->assertJsonCount(2, 'data');
 
@@ -213,6 +228,10 @@ class AdminTrashApiTest extends TestCase
             ->assertOk()->assertJsonPath('data.0.type', 'menu')->assertJsonPath('data.0.name', 'Trash Menu');
 
         $this->withToken($admin->createToken('admin')->plainTextToken)
+            ->getJson('/api/admin/trash?type=banner&search=Banner')
+            ->assertOk()->assertJsonPath('data.0.type', 'banner')->assertJsonPath('data.0.name', 'Trash Banner');
+
+        $this->withToken($admin->createToken('admin')->plainTextToken)
             ->getJson('/api/admin/trash?type=invalid')
             ->assertUnprocessable()
             ->assertJsonValidationErrors('type');
@@ -228,19 +247,21 @@ class AdminTrashApiTest extends TestCase
         $product = $this->createProduct($productCategory, 'Restore Shirt');
         $post = Post::create(['title' => 'Restore Article', 'slug' => 'restore-article', 'content' => 'Content']);
         $menu = Menu::create(['name' => 'Restore Menu', 'url' => '/restore-menu']);
+        $banner = Banner::create(['title' => 'Restore Banner', 'image' => 'banners/restore.jpg']);
 
         $this->withToken($token)->deleteJson('/api/categories/'.$category->slug)->assertOk();
         $this->withToken($token)->deleteJson('/api/brands/'.$brand->slug)->assertOk();
         $this->withToken($token)->deleteJson('/api/products/'.$product->slug)->assertOk();
         $this->withToken($token)->deleteJson('/api/admin/posts/'.$post->slug)->assertOk();
         $this->withToken($token)->deleteJson('/api/admin/menus/'.$menu->id)->assertOk();
+        $this->withToken($token)->deleteJson('/api/admin/banners/'.$banner->id)->assertOk();
 
         $this->assertSoftDeleted('categories', ['id' => $category->id]);
         $this->assertSoftDeleted('brands', ['id' => $brand->id]);
         $this->assertSoftDeleted('products', ['id' => $product->id]);
         $this->getJson('/api/products/'.$product->slug)->assertNotFound();
 
-        foreach ([['category', $category], ['brand', $brand], ['product', $product], ['post', $post], ['menu', $menu]] as [$type, $record]) {
+        foreach ([['category', $category], ['brand', $brand], ['product', $product], ['post', $post], ['menu', $menu], ['banner', $banner]] as [$type, $record]) {
             $this->withToken($token)
                 ->postJson('/api/admin/trash/'.$type.'/'.$record->id.'/restore')
                 ->assertOk()
@@ -252,14 +273,15 @@ class AdminTrashApiTest extends TestCase
         $this->assertDatabaseHas('products', ['id' => $product->id, 'deleted_at' => null]);
         $this->assertDatabaseHas('posts', ['id' => $post->id, 'deleted_at' => null]);
         $this->assertDatabaseHas('menus', ['id' => $menu->id, 'deleted_at' => null]);
+        $this->assertDatabaseHas('banners', ['id' => $banner->id, 'deleted_at' => null]);
     }
 
     public function test_permanent_product_delete_cascades_only_its_owned_images_and_variants(): void
     {
         $admin = $this->createAdmin();
         $product = $this->createProduct(Category::create(['name' => 'Purge Tops', 'slug' => 'purge-tops']), 'Purge Shirt');
-        $sizeId = \Illuminate\Support\Facades\DB::table('sizes')->insertGetId(['name' => 'M']);
-        $colorId = \Illuminate\Support\Facades\DB::table('colors')->insertGetId(['name' => 'Blue']);
+        $sizeId = DB::table('sizes')->insertGetId(['name' => 'M']);
+        $colorId = DB::table('colors')->insertGetId(['name' => 'Blue']);
         $variant = ProductVariant::create([
             'product_id' => $product->id, 'size_id' => $sizeId, 'color_id' => $colorId, 'sku' => 'PURGE-SKU',
         ]);
@@ -285,13 +307,16 @@ class AdminTrashApiTest extends TestCase
         $product = $this->createProduct($productCategory, 'Purge Product');
         $post = Post::create(['title' => 'Purge Article', 'slug' => 'purge-article', 'content' => 'Content']);
         $menu = Menu::create(['name' => 'Purge Menu', 'url' => '/purge-menu']);
+        $banner = Banner::create(['title' => 'Purge Banner', 'image' => 'banners/purge-cover.jpg']);
         $category->delete();
         $brand->delete();
         $product->delete();
         $post->delete();
         $menu->delete();
+        $banner->delete();
         Storage::fake('public');
         Storage::disk('public')->put('posts/purge-cover.jpg', 'image-bytes');
+        Storage::disk('public')->put('banners/purge-cover.jpg', 'image-bytes');
         $post->forceFill(['thumbnail' => 'posts/purge-cover.jpg'])->save();
 
         $this->withToken($token)->deleteJson('/api/admin/trash/category/'.$category->id)->assertOk();
@@ -299,13 +324,16 @@ class AdminTrashApiTest extends TestCase
         $this->withToken($token)->deleteJson('/api/admin/trash/product/'.$product->id)->assertOk();
         $this->withToken($token)->deleteJson('/api/admin/trash/post/'.$post->id)->assertOk();
         $this->withToken($token)->deleteJson('/api/admin/trash/menu/'.$menu->id)->assertOk();
+        $this->withToken($token)->deleteJson('/api/admin/trash/banner/'.$banner->id)->assertOk();
 
         $this->assertDatabaseMissing('categories', ['id' => $category->id]);
         $this->assertDatabaseMissing('brands', ['id' => $brand->id]);
         $this->assertDatabaseMissing('products', ['id' => $product->id]);
         $this->assertDatabaseMissing('posts', ['id' => $post->id]);
         $this->assertDatabaseMissing('menus', ['id' => $menu->id]);
+        $this->assertDatabaseMissing('banners', ['id' => $banner->id]);
         Storage::disk('public')->assertMissing('posts/purge-cover.jpg');
+        Storage::disk('public')->assertMissing('banners/purge-cover.jpg');
     }
 
     public function test_permanent_delete_is_blocked_for_category_brand_and_product_references(): void
@@ -324,14 +352,14 @@ class AdminTrashApiTest extends TestCase
         $this->withToken($token)->deleteJson('/api/admin/trash/category/'.$category->id)->assertStatus(409);
         $this->withToken($token)->deleteJson('/api/admin/trash/brand/'.$brand->id)->assertStatus(409);
 
-        $sizeId = \Illuminate\Support\Facades\DB::table('sizes')->insertGetId(['name' => 'L']);
-        $colorId = \Illuminate\Support\Facades\DB::table('colors')->insertGetId(['name' => 'Black']);
+        $sizeId = DB::table('sizes')->insertGetId(['name' => 'L']);
+        $colorId = DB::table('colors')->insertGetId(['name' => 'Black']);
         $variant = ProductVariant::create([
             'product_id' => $product->id, 'size_id' => $sizeId, 'color_id' => $colorId, 'sku' => 'PROTECTED-SKU',
         ]);
         OrderItem::create(['product_variant_id' => $variant->id, 'product_name' => 'Protected Product']);
         CartItem::create(['product_variant_id' => $variant->id]);
-        \Illuminate\Support\Facades\DB::table('reviews')->insert([
+        DB::table('reviews')->insert([
             'product_id' => $product->id, 'rating' => 5, 'created_at' => now(), 'updated_at' => now(),
         ]);
 

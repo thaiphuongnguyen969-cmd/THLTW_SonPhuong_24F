@@ -198,6 +198,7 @@ class AuthenticationTest extends TestCase
     public function test_me_requires_authentication_and_returns_only_safe_user_fields(): void
     {
         $this->getJson('/api/me')->assertUnauthorized();
+        $this->patchJson('/api/me', ['name' => 'Unauthenticated'])->assertUnauthorized();
 
         $user = User::create([
             'name' => 'Customer',
@@ -214,6 +215,147 @@ class AuthenticationTest extends TestCase
             ->assertJsonMissingPath('user.password')
             ->assertJsonMissingPath('user.remember_token')
             ->assertJsonMissingPath('user.access_token');
+    }
+
+    public function test_customer_can_update_profile_and_keep_or_change_their_own_email(): void
+    {
+        $user = User::create([
+            'name' => 'Customer',
+            'email' => 'customer@example.test',
+            'password' => Hash::make('secret123'),
+        ]);
+        $token = $user->createToken('test')->plainTextToken;
+
+        $this->withToken($token)
+            ->patchJson('/api/me', [
+                'name' => 'Updated Customer',
+                'email' => 'customer@example.test',
+                'phone' => '0901234567',
+                'address' => '123 Example Street',
+            ])
+            ->assertOk()
+            ->assertJsonPath('user.name', 'Updated Customer')
+            ->assertJsonPath('user.email', 'customer@example.test')
+            ->assertJsonPath('user.phone', '0901234567')
+            ->assertJsonPath('user.address', '123 Example Street')
+            ->assertJsonMissingPath('user.password')
+            ->assertJsonMissingPath('user.remember_token')
+            ->assertJsonMissingPath('user.access_token');
+
+        $this->withToken($token)
+            ->patchJson('/api/me', ['email' => 'updated@example.test'])
+            ->assertOk()
+            ->assertJsonPath('user.email', 'updated@example.test');
+
+        $this->assertDatabaseHas('users', [
+            'id' => $user->id,
+            'name' => 'Updated Customer',
+            'email' => 'updated@example.test',
+            'phone' => '0901234567',
+            'address' => '123 Example Street',
+        ]);
+
+        $this->withToken($token)->postJson('/api/logout')->assertOk();
+
+        $newToken = $this->postJson('/api/login', [
+            'email' => 'updated@example.test',
+            'password' => 'secret123',
+        ])->assertOk()->json('access_token');
+
+        $this->withToken($newToken)
+            ->getJson('/api/me')
+            ->assertOk()
+            ->assertJsonPath('user.name', 'Updated Customer')
+            ->assertJsonPath('user.phone', '0901234567')
+            ->assertJsonPath('user.address', '123 Example Street');
+    }
+
+    public function test_profile_update_rejects_an_email_owned_by_another_user(): void
+    {
+        $user = User::create([
+            'name' => 'Customer',
+            'email' => 'customer@example.test',
+            'password' => Hash::make('secret123'),
+        ]);
+        User::create([
+            'name' => 'Other Customer',
+            'email' => 'other@example.test',
+            'password' => Hash::make('secret123'),
+        ]);
+        $token = $user->createToken('test')->plainTextToken;
+
+        $this->withToken($token)
+            ->patchJson('/api/me', [
+                'name' => 'Should Not Save',
+                'email' => 'other@example.test',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['email']);
+
+        $this->withToken($token)
+            ->patchJson('/api/me', ['email' => 'not-an-email'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['email']);
+
+        $this->assertDatabaseHas('users', [
+            'id' => $user->id,
+            'name' => 'Customer',
+            'email' => 'customer@example.test',
+        ]);
+    }
+
+    public function test_profile_update_rejects_identity_and_authentication_fields(): void
+    {
+        $user = User::create([
+            'name' => 'Customer',
+            'email' => 'customer@example.test',
+            'password' => Hash::make('secret123'),
+        ]);
+        $otherUser = User::create([
+            'name' => 'Other Customer',
+            'email' => 'other@example.test',
+            'password' => Hash::make('secret123'),
+        ]);
+        $token = $user->createToken('test')->plainTextToken;
+
+        $this->withToken($token)
+            ->patchJson('/api/me', [
+                'name' => 'Should Not Save',
+                'id' => $otherUser->id,
+                'user_id' => $otherUser->id,
+                'role' => 'admin',
+                'status' => 'inactive',
+                'password' => 'changed123',
+                'avatar' => 'https://example.test/avatar.png',
+                'remember_token' => 'forged-token',
+                'email_verified_at' => now()->toISOString(),
+                'access_token' => 'forged-access-token',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors([
+                'id',
+                'user_id',
+                'role',
+                'status',
+                'password',
+                'avatar',
+                'remember_token',
+                'email_verified_at',
+                'access_token',
+            ]);
+
+        $this->assertDatabaseHas('users', [
+            'id' => $user->id,
+            'name' => 'Customer',
+            'role' => 'customer',
+            'status' => 'active',
+        ]);
+        $this->assertDatabaseHas('users', [
+            'id' => $otherUser->id,
+            'name' => 'Other Customer',
+            'email' => 'other@example.test',
+        ]);
+        $this->assertTrue(Hash::check('secret123', $user->fresh()->password));
     }
 
     public function test_inactive_user_cannot_use_an_existing_token_on_authenticated_routes(): void
@@ -233,6 +375,7 @@ class AuthenticationTest extends TestCase
         $this->app['auth']->forgetGuards();
 
         $this->withToken($token)->getJson('/api/me')->assertUnauthorized();
+        $this->withToken($token)->patchJson('/api/me', ['name' => 'Inactive'])->assertUnauthorized();
         $this->withToken($token)->postJson('/api/logout')->assertUnauthorized();
         $this->withToken($token)->getJson('/api/users')->assertUnauthorized();
 

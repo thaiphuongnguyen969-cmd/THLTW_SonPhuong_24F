@@ -18,6 +18,7 @@ const typeLabels: Record<TrashType, string> = {
   product: "Sản phẩm",
   post: "Bài viết",
   menu: "Menu",
+  banner: "Banner",
 };
 
 export default function AdminTrashPage() {
@@ -38,7 +39,7 @@ export default function AdminTrashPage() {
   useEffect(() => {
     void Promise.resolve().then(() => {
       const requestedType = new URLSearchParams(window.location.search).get("type");
-      if (requestedType === "product" || requestedType === "category" || requestedType === "brand" || requestedType === "post" || requestedType === "menu") {
+      if (requestedType === "product" || requestedType === "category" || requestedType === "brand" || requestedType === "post" || requestedType === "menu" || requestedType === "banner") {
         setType(requestedType);
       }
       setQueryInitialized(true);
@@ -117,7 +118,7 @@ export default function AdminTrashPage() {
       <label className="block text-sm font-medium text-zinc-700">Loại dữ liệu
         <select value={type} onChange={(event) => { setType(event.target.value as TrashType | "all"); setPage(1); }} className="mt-2 block min-w-48 rounded-xl border border-zinc-300 bg-white px-3 py-2.5 font-normal">
           <option value="all">Tất cả</option><option value="category">Danh mục</option>
-          <option value="brand">Thương hiệu</option><option value="product">Sản phẩm</option><option value="post">Bài viết</option><option value="menu">Menu</option>
+          <option value="brand">Thương hiệu</option><option value="product">Sản phẩm</option><option value="post">Bài viết</option><option value="menu">Menu</option><option value="banner">Banner</option>
         </select>
       </label>
       <form onSubmit={applySearch} className="flex flex-1 flex-wrap gap-2">

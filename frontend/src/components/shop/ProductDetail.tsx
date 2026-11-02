@@ -52,24 +52,24 @@ export function ProductDetail({ product, relatedProducts = [] }: { product: Prod
 
   return (
     <>
-    <main className="mx-auto grid max-w-7xl gap-8 px-4 py-8 sm:px-6 md:py-12 lg:grid-cols-2 lg:px-8">
-      <div className="flex min-h-72 items-center justify-center overflow-hidden rounded-[2rem] bg-stone-100">
-        {image && failedImage !== image ? <Image unoptimized width={1200} height={1200} src={image} alt={product.name} className="max-h-[680px] w-full object-contain" onError={() => setFailedImage(image)} /> : <p className="p-10 text-sm text-zinc-500">Hình ảnh sản phẩm hiện không khả dụng.</p>}
+    <main className="shop-product-detail mx-auto grid max-w-7xl gap-8 px-4 py-8 sm:px-6 md:py-12 lg:grid-cols-2 lg:px-8">
+      <div className="shop-product-detail__media flex min-h-72 items-center justify-center overflow-hidden rounded-[2rem] bg-stone-100">
+        {image && failedImage !== image ? <Image unoptimized width={1200} height={1200} src={image} alt={product.name} className="shop-product-detail__image max-h-[680px] w-full object-contain" onError={() => setFailedImage(image)} /> : <p className="p-10 text-sm text-zinc-500">Hình ảnh sản phẩm hiện không khả dụng.</p>}
       </div>
-      <section className="flex flex-col justify-center">
+      <section className="shop-product-detail__info flex flex-col justify-center">
         <Link href="/products" className="text-sm text-zinc-500 hover:text-zinc-900">← Quay lại sản phẩm</Link>
-        <p className="mt-6 text-xs uppercase tracking-widest text-zinc-500">{product.brand?.name ?? "Sơn Phương Model"}</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">{product.name}</h1>
-        <div className="mt-5 flex flex-wrap items-baseline gap-3"><p className="text-3xl font-semibold">{!selectedVariant && product.price_from ? "Từ " : ""}{formatPriceValue(price)}</p>{hasSalePrice && regularPrice !== price && <p className="text-lg text-zinc-400 line-through">{formatPriceValue(regularPrice)}</p>}{hasSalePrice && <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700">Khuyến mãi</span>}{hasSalePrice && discountPercentage != null && <span className="text-sm font-medium text-red-700">Giảm {discountPercentage}%</span>}</div>
-        <p className="mt-5 whitespace-pre-line leading-7 text-zinc-600">{product.description || "Chưa có mô tả cho sản phẩm này."}</p>
+        <p className="shop-product-detail__eyebrow mt-6 text-xs uppercase tracking-widest text-zinc-500">{product.brand?.name ?? "Sơn Phương Model"}</p>
+        <h1 className="shop-product-detail__title mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">{product.name}</h1>
+        <div className="shop-product-detail__price mt-5 flex flex-wrap items-baseline gap-3"><p className="text-3xl font-semibold">{!selectedVariant && product.price_from ? "Từ " : ""}{formatPriceValue(price)}</p>{hasSalePrice && regularPrice !== price && <p className="text-lg text-zinc-400 line-through">{formatPriceValue(regularPrice)}</p>}{hasSalePrice && <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700">Khuyến mãi</span>}{hasSalePrice && discountPercentage != null && <span className="text-sm font-medium text-red-700">Giảm {discountPercentage}%</span>}</div>
+        <p className="shop-product-detail__description mt-5 whitespace-pre-line leading-7 text-zinc-600">{product.description || "Chưa có mô tả cho sản phẩm này."}</p>
         {product.category && <p className="mt-4 text-sm text-zinc-500">Danh mục: {product.category.name}</p>}
 
         {variants.length > 0 && (
-          <fieldset className="mt-7">
+          <fieldset className="shop-product-detail__variants mt-7">
             <legend className="text-sm font-medium">Phiên bản</legend>
             <div className="mt-3 flex flex-wrap gap-2">
               {variants.map((variant) => (
-                <button key={variant.id} type="button" disabled={variant.available !== true} aria-pressed={selectedVariantId === variant.id} onClick={() => { setSelectedVariantId(variant.id); setQuantity(1); setAdded(false); }} className={`rounded-full border px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-45 ${selectedVariantId === variant.id ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-300 bg-white text-zinc-700"}`}>
+                <button key={variant.id} type="button" disabled={variant.available !== true} aria-pressed={selectedVariantId === variant.id} onClick={() => { setSelectedVariantId(variant.id); setQuantity(1); setAdded(false); }} className={`shop-product-detail__variant rounded-full border px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-45 ${selectedVariantId === variant.id ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-300 bg-white text-zinc-700"}`}>
                   {variant.size.name} · {variant.color.name}{variant.available === false ? " (Hết hàng)" : ""}
                 </button>
               ))}
@@ -79,25 +79,25 @@ export function ProductDetail({ product, relatedProducts = [] }: { product: Prod
         )}
 
         {selectedVariant && (
-          <div className="mt-6 flex items-center gap-3">
+          <div className="shop-product-detail__quantity mt-6 flex items-center gap-3">
             <label htmlFor="product-quantity" className="text-sm font-medium">Số lượng</label>
-            <input id="product-quantity" type="number" min={1} step={1} value={quantity} onChange={(event) => { setQuantity(Math.max(1, Math.floor(Number(event.target.value) || 1))); setAdded(false); }} className="w-24 rounded-xl border border-zinc-300 bg-white px-3 py-2" />
+            <input id="product-quantity" type="number" min={1} step={1} value={quantity} onChange={(event) => { setQuantity(Math.max(1, Math.floor(Number(event.target.value) || 1))); setAdded(false); }} className="shop-product-detail__quantity-input w-24 rounded-xl border border-zinc-300 bg-white px-3 py-2" />
           </div>
         )}
 
-        <div className="mt-7 flex flex-wrap gap-3">
+        <div className="shop-product-detail__actions mt-7 flex flex-wrap gap-3">
           {canAdd ? (
-            <button type="button" disabled={adding || mutating || added} onClick={() => void handleAddToCart()} className="rounded-full bg-zinc-900 px-6 py-3 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-default disabled:opacity-60">{adding ? "Đang thêm…" : added ? "Đã thêm vào giỏ hàng" : "Thêm vào giỏ hàng"}</button>
+            <button type="button" disabled={adding || mutating || added} onClick={() => void handleAddToCart()} className="shop-product-detail__add-button rounded-full bg-zinc-900 px-6 py-3 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-default disabled:opacity-60">{adding ? "Đang thêm…" : added ? "Đã thêm vào giỏ hàng" : "Thêm vào giỏ hàng"}</button>
           ) : <button type="button" disabled className="cursor-not-allowed rounded-full bg-zinc-300 px-6 py-3 text-sm font-medium text-zinc-600">{variants.length ? "Không thể thêm phiên bản này" : "Chưa có phiên bản để thêm"}</button>}
           <Link href="/cart" className="rounded-full border border-zinc-300 bg-white px-6 py-3 text-sm font-medium">Xem giỏ hàng</Link>
         </div>
-        {added && <p role="status" className="mt-3 text-sm text-emerald-700">Đã thêm sản phẩm vào giỏ hàng.</p>}
+        {added && <p role="status" className="shop-product-detail__cart-feedback mt-3 text-sm text-emerald-700">Đã thêm sản phẩm vào giỏ hàng.</p>}
         {cartError && <p role="alert" className="mt-3 text-sm text-red-700">{cartError}</p>}
       </section>
     </main>
     {relatedProducts.length > 0 && <section className="bg-white">
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-        <h2 className="mb-6 text-2xl font-semibold">Sản phẩm liên quan</h2>
+        <h2 className="shop-product-detail__related-title mb-6 text-2xl font-semibold">Sản phẩm liên quan</h2>
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {relatedProducts.slice(0, 4).map((related) => <ProductCard key={related.id} product={related} />)}
         </div>

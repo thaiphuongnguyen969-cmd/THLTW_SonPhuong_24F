@@ -1,18 +1,20 @@
 <?php
 
-use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AddressController;
-use App\Http\Controllers\Api\AdminTrashController;
+use App\Http\Controllers\Api\AdminDashboardController;
 use App\Http\Controllers\Api\AdminOrderController;
+use App\Http\Controllers\Api\AdminTrashController;
+use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BannerController;
 use App\Http\Controllers\Api\BrandController;
 use App\Http\Controllers\Api\CartController;
 use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\MenuController;
 use App\Http\Controllers\Api\OrderController;
+use App\Http\Controllers\Api\PostController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ProductVariantController;
-use App\Http\Controllers\Api\PostController;
 use App\Http\Controllers\Api\UserController;
-use App\Http\Controllers\Api\MenuController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/register', [AuthController::class, 'register']);
@@ -26,9 +28,11 @@ Route::get('/products/{product}/related', [ProductController::class, 'related'])
 Route::get('/posts', [PostController::class, 'publicIndex']);
 Route::get('/posts/{slug}', [PostController::class, 'publicShow'])->where('slug', '[a-z0-9]+(?:-[a-z0-9]+)*');
 Route::get('/menus', [MenuController::class, 'publicIndex']);
+Route::get('/banners', [BannerController::class, 'publicIndex']);
 
 Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
+    Route::patch('/me', [AuthController::class, 'updateProfile']);
     Route::get('/user', [AuthController::class, 'me']);
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/addresses', [AddressController::class, 'index']);
@@ -49,6 +53,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::post('/orders/{order}/cancel', [OrderController::class, 'cancel']);
 
     Route::middleware('admin')->group(function () {
+        Route::get('/admin/dashboard', AdminDashboardController::class);
         Route::get('/admin/orders', [AdminOrderController::class, 'index']);
         Route::get('/admin/orders/{order}', [AdminOrderController::class, 'show'])->whereNumber('order');
         Route::patch('/admin/orders/{order}/status', [AdminOrderController::class, 'updateStatus'])->whereNumber('order');
@@ -57,6 +62,12 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::get('/admin/menus/{menu}', [MenuController::class, 'adminShow'])->whereNumber('menu');
         Route::patch('/admin/menus/{menu}', [MenuController::class, 'adminUpdate'])->whereNumber('menu');
         Route::delete('/admin/menus/{menu}', [MenuController::class, 'adminDestroy'])->whereNumber('menu');
+        Route::get('/admin/banners', [BannerController::class, 'adminIndex']);
+        Route::post('/admin/banners', [BannerController::class, 'adminStore']);
+        Route::get('/admin/banners/{banner}', [BannerController::class, 'adminShow'])->whereNumber('banner');
+        Route::patch('/admin/banners/{banner}', [BannerController::class, 'adminUpdate'])->whereNumber('banner');
+        Route::post('/admin/banners/{banner}', [BannerController::class, 'adminUpdate'])->whereNumber('banner');
+        Route::delete('/admin/banners/{banner}', [BannerController::class, 'adminDestroy'])->whereNumber('banner');
         Route::patch('users/{user}/status', [UserController::class, 'status'])->whereNumber('user');
         Route::get('/admin/posts', [PostController::class, 'adminIndex']);
         Route::post('/admin/posts', [PostController::class, 'adminStore']);
@@ -73,10 +84,10 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::prefix('admin')->group(function () {
             Route::get('/trash', [AdminTrashController::class, 'index']);
             Route::post('/trash/{type}/{id}/restore', [AdminTrashController::class, 'restore'])
-                ->where('type', 'category|brand|product|post|menu')
+                ->where('type', 'category|brand|product|post|menu|banner')
                 ->whereNumber('id');
             Route::delete('/trash/{type}/{id}', [AdminTrashController::class, 'destroy'])
-                ->where('type', 'category|brand|product|post|menu')
+                ->where('type', 'category|brand|product|post|menu|banner')
                 ->whereNumber('id');
 
             Route::apiResource('categories', CategoryController::class)

@@ -49,6 +49,14 @@ export function ProductCatalogue({
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const hasActiveFilters = Boolean(
+    filters.q.trim()
+    || filters.category
+    || filters.brand
+    || filters.min_price
+    || filters.max_price
+    || filters.sort !== "featured",
+  );
 
   useEffect(() => {
     let active = true;
@@ -176,36 +184,36 @@ export function ProductCatalogue({
   }
 
   return (
-    <main className="mx-auto min-h-[60vh] max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+    <main className="shop-catalog-page mx-auto min-h-[60vh] max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+      <div className="shop-catalog-heading mb-8 flex flex-wrap items-end justify-between gap-4">
         <div><p className="text-xs uppercase tracking-widest text-zinc-500">Cửa hàng</p><h1 className="mt-2 text-3xl font-semibold">Sản phẩm</h1></div>
         <p className="text-sm text-zinc-500">{total} sản phẩm</p>
       </div>
 
-      <form onSubmit={applyFilters} className="mb-8 grid gap-3 rounded-2xl border border-zinc-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-3">
+      <form onSubmit={applyFilters} data-has-filters={hasActiveFilters} className="shop-catalog-filters mb-8 grid gap-3 rounded-2xl border border-zinc-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-3">
         <label className="text-sm font-medium text-zinc-700">Tìm theo tên
-          <input value={filters.q} onChange={(event) => setFilters({ ...filters, q: event.target.value })} maxLength={200} placeholder="Tên sản phẩm" className="mt-2 w-full rounded-xl border border-zinc-200 bg-stone-50 px-4 py-3 font-normal outline-none focus:border-zinc-500" />
+          <input value={filters.q} onChange={(event) => setFilters({ ...filters, q: event.target.value })} maxLength={200} placeholder="Tên sản phẩm" className="shop-catalog-control mt-2 w-full rounded-xl border border-zinc-200 bg-stone-50 px-4 py-3 font-normal outline-none focus:border-zinc-500" />
         </label>
         <label id="categories" className="text-sm font-medium text-zinc-700">Danh mục
-          <select value={filters.category} onChange={(event) => setFilters({ ...filters, category: event.target.value })} className="mt-2 w-full rounded-xl border border-zinc-200 bg-stone-50 px-4 py-3 font-normal">
+          <select value={filters.category} data-active={Boolean(filters.category)} onChange={(event) => setFilters({ ...filters, category: event.target.value })} className="shop-catalog-control mt-2 w-full rounded-xl border border-zinc-200 bg-stone-50 px-4 py-3 font-normal">
             <option value="">Tất cả danh mục</option>
             {categories.map((item) => <option key={item.id} value={item.slug}>{item.name}</option>)}
           </select>
         </label>
         <label id="brands" className="text-sm font-medium text-zinc-700">Thương hiệu
-          <select value={filters.brand} onChange={(event) => setFilters({ ...filters, brand: event.target.value })} className="mt-2 w-full rounded-xl border border-zinc-200 bg-stone-50 px-4 py-3 font-normal">
+          <select value={filters.brand} data-active={Boolean(filters.brand)} onChange={(event) => setFilters({ ...filters, brand: event.target.value })} className="shop-catalog-control mt-2 w-full rounded-xl border border-zinc-200 bg-stone-50 px-4 py-3 font-normal">
             <option value="">Tất cả thương hiệu</option>
             {brands.map((item) => <option key={item.id} value={item.slug}>{item.name}</option>)}
           </select>
         </label>
         <label className="text-sm font-medium text-zinc-700">Giá tối thiểu
-          <input type="number" min={0} value={filters.min_price} onChange={(event) => setFilters({ ...filters, min_price: event.target.value })} className="mt-2 w-full rounded-xl border border-zinc-200 bg-stone-50 px-4 py-3 font-normal" />
+          <input type="number" min={0} value={filters.min_price} data-active={Boolean(filters.min_price)} onChange={(event) => setFilters({ ...filters, min_price: event.target.value })} className="shop-catalog-control mt-2 w-full rounded-xl border border-zinc-200 bg-stone-50 px-4 py-3 font-normal" />
         </label>
         <label className="text-sm font-medium text-zinc-700">Giá tối đa
-          <input type="number" min={0} value={filters.max_price} onChange={(event) => setFilters({ ...filters, max_price: event.target.value })} className="mt-2 w-full rounded-xl border border-zinc-200 bg-stone-50 px-4 py-3 font-normal" />
+          <input type="number" min={0} value={filters.max_price} data-active={Boolean(filters.max_price)} onChange={(event) => setFilters({ ...filters, max_price: event.target.value })} className="shop-catalog-control mt-2 w-full rounded-xl border border-zinc-200 bg-stone-50 px-4 py-3 font-normal" />
         </label>
         <label className="text-sm font-medium text-zinc-700">Sắp xếp
-          <select value={filters.sort} onChange={(event) => setFilters({ ...filters, sort: event.target.value })} className="mt-2 w-full rounded-xl border border-zinc-200 bg-stone-50 px-4 py-3 font-normal">
+          <select value={filters.sort} data-active={filters.sort !== "featured"} onChange={(event) => setFilters({ ...filters, sort: event.target.value })} className="shop-catalog-control mt-2 w-full rounded-xl border border-zinc-200 bg-stone-50 px-4 py-3 font-normal">
             <option value="featured">Mới nhất trước</option>
             <option value="name">Tên sản phẩm</option>
             <option value="price-asc">Giá tăng dần</option>
@@ -213,30 +221,30 @@ export function ProductCatalogue({
           </select>
         </label>
         <div className="flex flex-wrap items-end gap-2 sm:col-span-2 lg:col-span-3">
-          <button type="submit" className="rounded-full bg-zinc-900 px-5 py-3 text-sm font-medium text-white">Áp dụng</button>
-          <button type="button" onClick={resetFilters} className="rounded-full border border-zinc-300 bg-white px-5 py-3 text-sm font-medium">Xóa bộ lọc</button>
+          <button type="submit" className="shop-catalog-action rounded-full bg-zinc-900 px-5 py-3 text-sm font-medium text-white">Áp dụng</button>
+          <button type="button" data-active={hasActiveFilters} onClick={resetFilters} className="shop-catalog-action rounded-full border border-zinc-300 bg-white px-5 py-3 text-sm font-medium">Xóa bộ lọc</button>
         </div>
       </form>
 
-      {error && <p role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</p>}
+      {error && <p role="alert" className="shop-catalog-error mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</p>}
       {loading ? (
-        <p role="status" className="rounded-2xl border border-zinc-200 bg-white px-6 py-14 text-center text-sm text-zinc-500">Đang tải sản phẩm…</p>
+        <p role="status" className="shop-catalog-loading rounded-2xl border border-zinc-200 bg-white px-6 py-14 text-center text-sm text-zinc-500">Đang tải sản phẩm…</p>
       ) : !error && products.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-zinc-300 bg-white px-6 py-14 text-center">
+        <div className="shop-catalog-empty rounded-2xl border border-dashed border-zinc-300 bg-white px-6 py-14 text-center">
           <h2 className="text-lg font-semibold">Không tìm thấy sản phẩm phù hợp</h2>
           <p className="mt-2 text-sm text-zinc-500">Thử thay đổi từ khóa hoặc bộ lọc.</p>
         </div>
       ) : !error ? (
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="shop-catalog-grid grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {products.map((product) => <ProductCard key={product.id} product={product} />)}
         </div>
       ) : null}
 
-      <footer className="mt-8 flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-600">
-        <span>Trang {page} / {lastPage}</span>
+      <footer className="shop-catalog-pagination mt-8 flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-600">
+        <span className="shop-catalog-page">Trang {page} / {lastPage}</span>
         <div className="flex gap-2">
-          <button type="button" disabled={page <= 1 || loading || Boolean(error)} onClick={() => goToPage(page - 1)} className="rounded-lg border border-zinc-300 px-4 py-2 disabled:opacity-40">Trước</button>
-          <button type="button" disabled={page >= lastPage || loading || Boolean(error)} onClick={() => goToPage(page + 1)} className="rounded-lg border border-zinc-300 px-4 py-2 disabled:opacity-40">Sau</button>
+          <button type="button" disabled={page <= 1 || loading || Boolean(error)} onClick={() => goToPage(page - 1)} className="shop-catalog-page-button rounded-lg border border-zinc-300 px-4 py-2 disabled:opacity-40">Trước</button>
+          <button type="button" disabled={page >= lastPage || loading || Boolean(error)} onClick={() => goToPage(page + 1)} className="shop-catalog-page-button rounded-lg border border-zinc-300 px-4 py-2 disabled:opacity-40">Sau</button>
         </div>
       </footer>
     </main>

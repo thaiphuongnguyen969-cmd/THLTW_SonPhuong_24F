@@ -3,8 +3,8 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { getApiErrorMessage } from "@/lib/api/client";
-import { getCurrentUser, login as loginRequest, logout as logoutRequest, register as registerRequest } from "@/lib/api/auth";
-import type { RegisterPayload } from "@/lib/api/auth";
+import { getCurrentUser, login as loginRequest, logout as logoutRequest, register as registerRequest, updateCurrentUser } from "@/lib/api/auth";
+import type { ProfileUpdatePayload, RegisterPayload } from "@/lib/api/auth";
 import type { User } from "@/types/user";
 
 const TOKEN_KEY = "sonphuong.customer.token";
@@ -15,6 +15,7 @@ type CustomerAuthContextValue = {
   error: string;
   login: (payload: { email: string; password: string }) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
+  updateProfile: (payload: ProfileUpdatePayload) => Promise<User>;
   logout: () => Promise<{ serverConfirmed: boolean; message: string }>;
   getAccessToken: () => string | null;
   invalidateSession: () => void;
@@ -115,6 +116,28 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     await registerRequest(payload);
   }, []);
 
+  const updateProfile = useCallback(async (payload: ProfileUpdatePayload) => {
+    const token = getAccessToken();
+    if (!token) {
+      invalidateSession();
+      throw new Error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+    }
+
+    const currentVersion = version.current;
+    try {
+      const updatedUser = await updateCurrentUser(payload, token);
+      if (version.current === currentVersion) {
+        setUser(updatedUser);
+        setError("");
+      }
+      return updatedUser;
+    } catch (requestError) {
+      const status = (requestError as { response?: { status?: number } })?.response?.status;
+      if (status === 401 || status === 403) invalidateSession();
+      throw requestError;
+    }
+  }, [getAccessToken, invalidateSession]);
+
   const logout = useCallback(async () => {
     const token = window.sessionStorage.getItem(TOKEN_KEY);
     let serverConfirmed = false;
@@ -139,7 +162,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <CustomerAuthContext.Provider value={{ user, loading, error, login, register, logout, getAccessToken, invalidateSession }}>
+    <CustomerAuthContext.Provider value={{ user, loading, error, login, register, updateProfile, logout, getAccessToken, invalidateSession }}>
       {children}
     </CustomerAuthContext.Provider>
   );

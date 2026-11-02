@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { getApiErrorMessage } from "@/lib/api/client";
 import { getMenus } from "@/lib/api/menus";
 import { useShopCart } from "@/lib/shop-cart-context";
@@ -11,7 +12,10 @@ import type { Menu } from "@/types/menu";
 export function ShopHeader() {
   const { cart } = useShopCart();
   const auth = useCustomerAuth();
+  const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
   const [menus, setMenus] = useState<Menu[]>([]);
   const [menuLoading, setMenuLoading] = useState(true);
   const [menuError, setMenuError] = useState("");
@@ -45,10 +49,40 @@ export function ShopHeader() {
     return () => controller.abort();
   }, []);
 
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+        menuButtonRef.current?.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [menuOpen]);
+
+  useEffect(() => {
+    let previousState: boolean | null = null;
+
+    function updateScrollState() {
+      const nextState = window.scrollY > 8;
+      if (nextState !== previousState) {
+        previousState = nextState;
+        setIsScrolled(nextState);
+      }
+    }
+
+    updateScrollState();
+    window.addEventListener("scroll", updateScrollState, { passive: true });
+    return () => window.removeEventListener("scroll", updateScrollState);
+  }, []);
+
   function renderMenuItems(mobile = false) {
     const linkClassName = mobile
-      ? "rounded-lg px-3 py-2 hover:bg-stone-100"
-      : "transition hover:text-zinc-950";
+      ? "shop-nav-link rounded-lg px-3 py-2 hover:bg-stone-100"
+      : "shop-nav-link";
 
     if (menuLoading) {
       return <span role="status" className="text-sm text-zinc-500">Đang tải menu…</span>;
@@ -61,9 +95,14 @@ export function ShopHeader() {
     }
 
     return menus.map((menu) => {
+      const menuPath = menu.url.split("?")[0];
+      const isActive = menu.link_type === "internal"
+        && (pathname === menuPath || (menuPath !== "/" && pathname.startsWith(`${menuPath}/`)));
+      const activeProps = isActive ? { "aria-current": "page" as const } : {};
+
       if (menu.link_type === "internal") {
         return (
-          <Link key={menu.id} className={linkClassName} href={menu.url} onClick={mobile ? () => setMenuOpen(false) : undefined}>
+          <Link key={menu.id} className={linkClassName} href={menu.url} {...activeProps} onClick={mobile ? () => setMenuOpen(false) : undefined}>
             {menu.name}
           </Link>
         );
@@ -78,7 +117,7 @@ export function ShopHeader() {
   }
 
   return (
-    <header className="shop-header sticky top-0 z-40 backdrop-blur">
+    <header className="shop-header sticky top-0 z-40 backdrop-blur" data-scrolled={isScrolled}>
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
         <Link href="/" className="flex items-center gap-3 text-base font-semibold tracking-wide sm:text-lg">
           <span className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-900 text-xs text-white">SP</span>
@@ -97,22 +136,22 @@ export function ShopHeader() {
             <button type="button" onClick={() => void handleLogout()} disabled={loggingOut} className="rounded-full border border-zinc-200 px-3 py-2 text-sm disabled:opacity-60">{loggingOut ? "Đang đăng xuất…" : "Đăng xuất"}</button>
           </> : !auth.loading && <Link href="/login" className="rounded-full border border-zinc-200 px-3 py-2 text-sm">Đăng nhập</Link>}
           <Link href="/cart" className="rounded-full bg-zinc-900 px-3 py-2 text-sm text-white">
-            <span aria-hidden="true">🛒 </span>Giỏ hàng <span className="tabular-nums">({cart.total_quantity})</span>
+            <span aria-hidden="true">🛒 </span>Giỏ hàng <span key={cart.total_quantity} className="shop-cart-count tabular-nums">({cart.total_quantity})</span>
           </Link>
         </div>
-        <button type="button" className="rounded-full border border-zinc-200 px-3 py-2 text-sm lg:hidden" aria-expanded={menuOpen} aria-label={menuOpen ? "Đóng menu" : "Mở menu"} onClick={() => setMenuOpen((open) => !open)}>
+        <button ref={menuButtonRef} type="button" className="rounded-full border border-zinc-200 px-3 py-2 text-sm lg:hidden" aria-expanded={menuOpen} aria-controls="shop-mobile-navigation" aria-label={menuOpen ? "Đóng menu" : "Mở menu"} onClick={() => setMenuOpen((open) => !open)}>
           {menuOpen ? "Đóng" : "Menu"}
         </button>
       </div>
       {authNotice && <p role="status" className="mx-auto max-w-7xl px-4 pb-2 text-sm text-amber-800 sm:px-6 lg:px-8">{authNotice}</p>}
-      {menuOpen && (
-        <nav className="grid gap-1 border-t border-zinc-100 px-4 py-3 text-sm text-zinc-700 lg:hidden" aria-label="Điều hướng di động">
+      <div className="shop-mobile-nav lg:hidden" data-open={menuOpen} aria-hidden={!menuOpen} inert={!menuOpen}>
+        <nav id="shop-mobile-navigation" className="shop-mobile-nav__content grid gap-1 border-t border-zinc-100 px-4 py-3 text-sm text-zinc-700" aria-label="Điều hướng di động">
           {renderMenuItems(true)}
-          <Link className="rounded-lg px-3 py-2 hover:bg-stone-100" href="/account" onClick={() => setMenuOpen(false)}>Tài khoản</Link>
-          {!auth.loading && auth.user && <button type="button" disabled={loggingOut} className="rounded-lg px-3 py-2 text-left hover:bg-stone-100 disabled:opacity-60" onClick={() => { setMenuOpen(false); void handleLogout(); }}>{loggingOut ? "Đang đăng xuất…" : "Đăng xuất"}</button>}
-          {!auth.loading && !auth.user && <Link className="rounded-lg px-3 py-2 hover:bg-stone-100" href="/login" onClick={() => setMenuOpen(false)}>Đăng nhập</Link>}
+          <Link className="shop-nav-link rounded-lg px-3 py-2 hover:bg-stone-100" href="/account" onClick={() => setMenuOpen(false)}>Tài khoản</Link>
+          {!auth.loading && auth.user && <button type="button" disabled={loggingOut} className="shop-nav-link rounded-lg px-3 py-2 text-left hover:bg-stone-100 disabled:opacity-60" onClick={() => { setMenuOpen(false); void handleLogout(); }}>{loggingOut ? "Đang đăng xuất…" : "Đăng xuất"}</button>}
+          {!auth.loading && !auth.user && <Link className="shop-nav-link rounded-lg px-3 py-2 hover:bg-stone-100" href="/login" onClick={() => setMenuOpen(false)}>Đăng nhập</Link>}
         </nav>
-      )}
+      </div>
     </header>
   );
 }

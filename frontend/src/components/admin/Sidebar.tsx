@@ -10,6 +10,7 @@ const links = [
   { href: "/admin/categories", label: "Quản lý danh mục" },
   { href: "/admin/brands", label: "Quản lý thương hiệu" },
   { href: "/admin/posts", label: "Quản lý bài viết" },
+  { href: "/admin/banners", label: "Quản lý banner" },
   { href: "/admin/orders", label: "Quản lý đơn hàng" },
   { href: "/admin/customers", label: "Khách hàng" },
   { href: "/admin/users", label: "Quản lý tài khoản" },

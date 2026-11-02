@@ -1,6 +1,6 @@
 import { apiClient } from "@/lib/api/client";
 
-export type TrashType = "category" | "brand" | "product" | "post" | "menu";
+export type TrashType = "category" | "brand" | "product" | "post" | "menu" | "banner";
 
 export type TrashRecord = {
   type: TrashType;

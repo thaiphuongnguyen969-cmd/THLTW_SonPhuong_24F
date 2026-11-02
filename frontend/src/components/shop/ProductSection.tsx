@@ -28,7 +28,7 @@ export function ProductSection({
   return (
     <section className="bg-white">
       <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-        <div className="mb-6 flex items-end justify-between gap-4">
+        <div className="shop-section-heading mb-6 flex items-end justify-between gap-4">
           <div>
             {eyebrow && <p className="text-xs uppercase tracking-widest text-zinc-500">{eyebrow}</p>}
             <h2 className="mt-2 text-2xl font-semibold">{title}</h2>

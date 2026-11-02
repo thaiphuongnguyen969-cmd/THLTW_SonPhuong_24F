@@ -14,13 +14,13 @@ export function ProductCard({ product }: { product: Product }) {
   const [failedImage, setFailedImage] = useState<string | null>(null);
 
   return (
-    <article className="flex h-full min-w-0 flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white">
+    <article className="shop-product-card flex h-full min-w-0 flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white">
       <div className="aspect-[4/5] w-full shrink-0 overflow-hidden bg-stone-100">
         {image && failedImage !== image ? (
           <img
             src={image}
             alt={product.name}
-            className="h-full w-full object-contain"
+            className="shop-product-image h-full w-full object-contain"
             onError={() => setFailedImage(image)}
           />
         ) : (

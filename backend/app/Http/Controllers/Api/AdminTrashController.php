@@ -3,15 +3,17 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Banner;
 use App\Models\Brand;
 use App\Models\CartItem;
 use App\Models\Category;
+use App\Models\Menu;
 use App\Models\OrderItem;
+use App\Models\Post;
 use App\Models\Product;
 use App\Models\ProductVariant;
-use App\Models\Post;
-use App\Models\Menu;
 use App\Models\Review;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -20,11 +22,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
-use Illuminate\Database\Eloquent\Model;
 
 class AdminTrashController extends Controller
 {
-    private const TYPES = ['category', 'brand', 'product', 'post', 'menu'];
+    private const TYPES = ['category', 'brand', 'product', 'post', 'menu', 'banner'];
 
     public function index(Request $request): JsonResponse
     {
@@ -42,7 +43,7 @@ class AdminTrashController extends Controller
         foreach ($types as $type) {
             $query = $this->trashedQuery($type);
             if ($search !== '') {
-                $query->where($type === 'post' ? 'title' : 'name', 'like', '%'.$search.'%');
+                $query->where(in_array($type, ['post', 'banner'], true) ? 'title' : 'name', 'like', '%'.$search.'%');
             }
             $queries[] = $query;
         }
@@ -112,10 +113,17 @@ class AdminTrashController extends Controller
         }
 
         try {
-            $thumbnail = $type === 'post' ? $record->thumbnail : null;
+            $storedImage = match ($type) {
+                'post' => $record->thumbnail,
+                'banner' => $record->image,
+                default => null,
+            };
             $record->forceDelete();
-            if ($thumbnail && Str::startsWith($thumbnail, 'posts/')) {
-                Storage::disk('public')->delete($thumbnail);
+            if ($type === 'post' && $storedImage && Str::startsWith($storedImage, 'posts/')) {
+                Storage::disk('public')->delete($storedImage);
+            }
+            if ($type === 'banner' && $storedImage && Str::startsWith($storedImage, 'banners/')) {
+                Storage::disk('public')->delete($storedImage);
             }
         } catch (QueryException) {
             return response()->json([
@@ -148,6 +156,9 @@ class AdminTrashController extends Controller
             'menu' => DB::table('menus')
                 ->whereNotNull('deleted_at')
                 ->selectRaw("'menu' as type, id, name, null as slug, status, deleted_at"),
+            'banner' => DB::table('banners')
+                ->whereNotNull('deleted_at')
+                ->selectRaw("'banner' as type, id, title as name, null as slug, status, deleted_at"),
         };
     }
 
@@ -161,6 +172,7 @@ class AdminTrashController extends Controller
             'product' => Product::onlyTrashed()->findOrFail($id),
             'post' => Post::onlyTrashed()->findOrFail($id),
             'menu' => Menu::onlyTrashed()->findOrFail($id),
+            'banner' => Banner::onlyTrashed()->findOrFail($id),
         };
     }
 
@@ -181,7 +193,7 @@ class AdminTrashController extends Controller
                 : null;
         }
 
-        if ($type === 'menu') {
+        if ($type === 'menu' || $type === 'banner') {
             return null;
         }
 

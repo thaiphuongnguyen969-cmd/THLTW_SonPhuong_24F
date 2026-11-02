@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\LoginRequest;
 use App\Http\Requests\RegisterRequest;
+use App\Http\Requests\UpdateProfileRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -52,6 +53,18 @@ class AuthController extends Controller
     {
         return response()->json([
             'user' => UserResource::make($request->user()),
+        ]);
+    }
+
+    public function updateProfile(UpdateProfileRequest $request): JsonResponse
+    {
+        $user = $request->user();
+        $user->fill($request->validated());
+        $user->save();
+
+        return response()->json([
+            'message' => 'Cập nhật thông tin cá nhân thành công.',
+            'user' => UserResource::make($user),
         ]);
     }
 
