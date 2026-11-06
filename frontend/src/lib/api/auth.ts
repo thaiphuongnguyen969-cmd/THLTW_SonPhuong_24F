@@ -24,6 +24,12 @@ export type ProfileUpdatePayload = {
 };
 
 export type RegisterResponse = { message: string; user: User };
+export type PasswordResetResponse = { message: string };
+export type OtpVerificationResponse = {
+  message: string;
+  reset_token: string;
+  expires_in: number;
+};
 
 export async function login(payload: { email: string; password: string }) {
   const response = await apiClient.post<LoginResponse>("/login", payload);
@@ -32,6 +38,28 @@ export async function login(payload: { email: string; password: string }) {
 
 export async function register(payload: RegisterPayload) {
   const response = await apiClient.post<RegisterResponse>("/register", payload);
+  return response.data;
+}
+
+export async function sendPasswordResetOtp(email: string) {
+  const response = await apiClient.post<PasswordResetResponse>("/forgot-password/send-otp", { email });
+  return response.data;
+}
+
+export async function verifyPasswordResetOtp(email: string, otp: string) {
+  const response = await apiClient.post<OtpVerificationResponse>("/forgot-password/verify-otp", {
+    email,
+    otp,
+  });
+  return response.data;
+}
+
+export async function resetPassword(payload: {
+  reset_token: string;
+  password: string;
+  password_confirmation: string;
+}) {
+  const response = await apiClient.post<PasswordResetResponse>("/forgot-password/reset", payload);
   return response.data;
 }
 

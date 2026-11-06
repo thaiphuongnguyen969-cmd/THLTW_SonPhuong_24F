@@ -1,0 +1,8 @@
+name: FashionShop - Security Test
+values:
+  - key: base_url
+    value: ''
+  - key: product_id
+    value: ''
+  - key: token
+    value: ''

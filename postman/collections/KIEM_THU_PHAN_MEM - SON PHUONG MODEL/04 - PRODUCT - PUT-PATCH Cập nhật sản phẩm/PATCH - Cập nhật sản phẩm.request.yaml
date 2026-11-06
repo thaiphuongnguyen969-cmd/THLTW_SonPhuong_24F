@@ -1,0 +1,76 @@
+$kind: http-request
+url: http://127.0.0.1:8000/api/products/13
+method: PATCH
+headers:
+  Accept: "\tapplication/json"
+  Content-Type: "\tapplication/json"
+body:
+  type: json
+  content: "{\r
+
+    \    \"name\": \"Sản phẩm kiểm thử Postman1\",\r
+
+    \    \"price\": 360000\r
+
+    }"
+auth:
+  type: bearer
+  credentials:
+    token: 52|erID1uSG9Nd5vbxX3RheeBxBkry9CMn5KBvpi9GIf8b114e4
+scripts:
+  - type: afterResponse
+    code: "pm.test(\"Status code là 200 OK\", function () {\r
+
+      \    pm.response.to.have.status(200);\r
+
+      });\r
+
+      \r
+
+      pm.test(\"Response là JSON\", function () {\r
+
+      \    pm.response.to.be.json;\r
+
+      });\r
+
+      \r
+
+      const json = pm.response.json();\r
+
+      \r
+
+      pm.test(\"Cập nhật sản phẩm thành công\", function () {\r
+
+      \    pm.expect(json.success).to.eql(true);\r
+
+      });\r
+
+      \r
+
+      pm.test(\"Có thông báo cập nhật\", function () {\r
+
+      \    pm.expect(json.message).to.eql(\"Cập nhật sản phẩm thành công.\");\r
+
+      });\r
+
+      \r
+
+      pm.test(\"Tên sản phẩm đã được cập nhật\", function () {\r
+
+      \    pm.expect(json.data.name).to.eql(\r
+
+      \        \"Sản phẩm kiểm thử Postman1\"\r
+
+      \    );\r
+
+      });\r
+
+      \r
+
+      pm.test(\"Giá sản phẩm đã được cập nhật\", function () {\r
+
+      \    pm.expect(Number(json.data.price)).to.eql(360000);\r
+
+      });"
+    language: text/javascript
+order: 1000

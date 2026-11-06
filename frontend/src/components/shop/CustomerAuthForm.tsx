@@ -80,6 +80,7 @@ export function CustomerAuthForm({ mode }: { mode: "login" | "register" }) {
                 <button type="button" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"} className="px-4 text-xs text-zinc-600">{showPassword ? "Ẩn" : "Hiện"}</button>
               </span>
             </label>
+            {!isRegister && <div className="-mt-2 text-right"><Link href="/forgot-password" className="text-sm font-medium text-zinc-700 underline">Quên mật khẩu?</Link></div>}
             {isRegister && <label className="block text-sm font-medium">Xác nhận mật khẩu<input name="password_confirmation" type={showPassword ? "text" : "password"} autoComplete="new-password" required minLength={6} className="mt-2 w-full rounded-xl border border-zinc-300 px-4 py-3 font-normal outline-none focus:border-zinc-700" /></label>}
             <button type="submit" disabled={submitting || auth.loading} className="w-full rounded-full bg-zinc-900 px-5 py-3 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60">{submitting ? "Đang xử lý…" : isRegister ? "Tạo tài khoản" : "Đăng nhập"}</button>
           </form>
