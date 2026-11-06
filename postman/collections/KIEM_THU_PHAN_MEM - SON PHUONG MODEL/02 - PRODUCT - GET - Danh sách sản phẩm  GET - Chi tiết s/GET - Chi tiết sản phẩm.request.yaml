@@ -1,0 +1,50 @@
+$kind: http-request
+url: http://127.0.0.1:8000/api/products/12
+method: GET
+scripts:
+  - type: afterResponse
+    code: "pm.test(\"Status code là 200\", function () {\r
+
+      \    pm.response.to.have.status(200);\r
+
+      });\r
+
+      \r
+
+      pm.test(\"Response là JSON\", function () {\r
+
+      \    pm.response.to.be.json;\r
+
+      });\r
+
+      \r
+
+      pm.test(\"Có dữ liệu sản phẩm\", function () {\r
+
+      \    const json = pm.response.json();\r
+
+      \    pm.expect(json.data).to.exist;\r
+
+      });\r
+
+      \r
+
+      pm.test(\"Sản phẩm có ID\", function () {\r
+
+      \    const json = pm.response.json();\r
+
+      \    pm.expect(json.data.id).to.exist;\r
+
+      });\r
+
+      \r
+
+      pm.test(\"Sản phẩm có tên\", function () {\r
+
+      \    const json = pm.response.json();\r
+
+      \    pm.expect(json.data.name).to.be.a(\"string\").and.not.empty;\r
+
+      });"
+    language: text/javascript
+order: 2000

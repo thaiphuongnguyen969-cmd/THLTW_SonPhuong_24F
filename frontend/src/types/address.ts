@@ -1,10 +1,13 @@
 export type Address = {
   id: number;
-  full_name: string;
-  phone: string;
-  province: string;
-  district: string;
-  ward: string;
-  address: string;
-  is_default?: boolean;
+  label: string;
+  recipient_name: string;
+  phone: string | null;
+  province: string | null;
+  district: string | null;
+  ward: string | null;
+  address_detail: string;
+  is_default: boolean;
+  created_at: string | null;
+  updated_at: string | null;
 };

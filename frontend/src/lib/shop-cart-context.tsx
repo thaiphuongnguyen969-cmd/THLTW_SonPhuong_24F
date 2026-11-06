@@ -1,105 +1,115 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { mockCart } from "@/lib/mock-data";
-import type { Cart, CartItem } from "@/types/cart";
-import type { Product } from "@/types/product";
+import { addCartItem, clearCart as clearCartRequest, getCart, removeCartItem, updateCartItem } from "@/lib/api/cart";
+import { getApiErrorMessage } from "@/lib/api/client";
+import { useCustomerAuth } from "@/lib/customer-auth-context";
+import type { Cart } from "@/types/cart";
 
 type ShopCartContextValue = {
   cart: Cart;
-  addItem: (product: Product, variantId: number, quantity: number) => void;
-  setQuantity: (itemId: number, quantity: number) => void;
-  removeItem: (itemId: number) => void;
+  loading: boolean;
+  mutating: boolean;
+  error: string;
+  refresh: () => Promise<void>;
+  addItem: (variantId: number, quantity: number) => Promise<void>;
+  setQuantity: (itemId: number, quantity: number) => Promise<void>;
+  removeItem: (itemId: number) => Promise<void>;
+  clear: () => Promise<void>;
 };
 
 const ShopCartContext = createContext<ShopCartContextValue | null>(null);
 
-function createInitialCart(): Cart {
-  return {
-    ...mockCart,
-    items: mockCart.items.map((item) => ({ ...item })),
-  };
-}
+const EMPTY_CART: Cart = { items: [], total_quantity: 0, total: "0.00" };
 
 export function ShopCartProvider({ children }: { children: ReactNode }) {
-  const [cart, setCart] = useState(createInitialCart);
+  const { user, loading: authLoading, getAccessToken, invalidateSession } = useCustomerAuth();
+  const [serverCart, setServerCart] = useState<Cart>(EMPTY_CART);
+  const [cartOwnerId, setCartOwnerId] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [mutating, setMutating] = useState(false);
+  const [error, setError] = useState("");
+  const requestVersion = useRef(0);
+
+  const refresh = useCallback(async (preserveError = false) => {
+    if (!user) return;
+    const token = getAccessToken();
+    if (!token) {
+      invalidateSession();
+      return;
+    }
+
+    const version = ++requestVersion.current;
+    setLoading(true);
+    if (!preserveError) setError("");
+    try {
+      const nextCart = await getCart(token);
+      if (requestVersion.current === version) {
+        setServerCart(nextCart);
+        setCartOwnerId(user.id);
+      }
+    } catch (requestError) {
+      if (requestVersion.current === version) {
+        const status = (requestError as { response?: { status?: number } })?.response?.status;
+        if (status === 401) invalidateSession();
+        setError(getApiErrorMessage(requestError, "Không thể tải giỏ hàng."));
+      }
+      throw requestError;
+    } finally {
+      if (requestVersion.current === version) setLoading(false);
+    }
+  }, [getAccessToken, invalidateSession, user]);
+
+  useEffect(() => {
+    if (authLoading || !user) return;
+    let active = true;
+    queueMicrotask(() => {
+      if (active) void refresh().catch(() => undefined);
+    });
+    return () => {
+      active = false;
+      requestVersion.current += 1;
+    };
+  }, [authLoading, refresh, user]);
+
+  const performMutation = useCallback(async (operation: (token: string) => Promise<unknown>) => {
+    if (!user) throw new Error("Vui lòng đăng nhập để sử dụng giỏ hàng.");
+    const token = getAccessToken();
+    if (!token) {
+      invalidateSession();
+      throw new Error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+    }
+
+    setMutating(true);
+    setError("");
+    try {
+      await operation(token);
+      await refresh();
+    } catch (requestError) {
+      const status = (requestError as { response?: { status?: number } })?.response?.status;
+      if (status === 401) invalidateSession();
+      setError(getApiErrorMessage(requestError, "Không thể cập nhật giỏ hàng."));
+      if (status === 404 || status === 409) void refresh(true).catch(() => undefined);
+      throw requestError;
+    } finally {
+      setMutating(false);
+    }
+  }, [getAccessToken, invalidateSession, refresh, user]);
+
+  const cart = user && cartOwnerId === user.id ? serverCart : EMPTY_CART;
 
   const value = useMemo<ShopCartContextValue>(() => ({
     cart,
-    addItem(product, variantId, quantity) {
-      const variant = product.variants?.find((item) => item.id === variantId);
-      if (!variant) return;
-
-      const unitPrice = String(variant.price ?? product.sale_price ?? product.price);
-      setCart((current) => {
-        const existing = current.items.find((item) => item.variant.id === variantId);
-        const items = existing
-          ? current.items.map((item) => {
-              if (item.variant.id !== variantId) return item;
-              const nextQuantity = item.quantity + quantity;
-              return {
-                ...item,
-                quantity: nextQuantity,
-                subtotal: (Number(unitPrice) * nextQuantity).toFixed(2),
-              };
-            })
-          : [
-              ...current.items,
-              {
-                id: variantId,
-                quantity,
-                product: {
-                  id: product.id,
-                  name: product.name,
-                  slug: product.slug,
-                  image: product.image ?? product.images?.[0]?.image_url ?? null,
-                },
-                variant: {
-                  id: variant.id,
-                  size: variant.size,
-                  color: variant.color,
-                },
-                unit_price: unitPrice,
-                subtotal: (Number(unitPrice) * quantity).toFixed(2),
-                available: variant.status === "active" && variant.stock >= quantity,
-              } satisfies CartItem,
-            ];
-
-        return {
-          items,
-          total_quantity: items.reduce((total, item) => total + item.quantity, 0),
-          total: items.reduce((total, item) => total + Number(item.subtotal), 0).toFixed(2),
-        };
-      });
-    },
-    setQuantity(itemId, quantity) {
-      setCart((current) => {
-        const items = current.items
-          .map((item) => item.id !== itemId ? item : {
-            ...item,
-            quantity,
-            subtotal: (Number(item.unit_price) * quantity).toFixed(2),
-          });
-
-        return {
-          items,
-          total_quantity: items.reduce((total, item) => total + item.quantity, 0),
-          total: items.reduce((total, item) => total + Number(item.subtotal), 0).toFixed(2),
-        };
-      });
-    },
-    removeItem(itemId) {
-      setCart((current) => {
-        const items = current.items.filter((item) => item.id !== itemId);
-        return {
-          items,
-          total_quantity: items.reduce((total, item) => total + item.quantity, 0),
-          total: items.reduce((total, item) => total + Number(item.subtotal), 0).toFixed(2),
-        };
-      });
-    },
-  }), [cart]);
+    loading: authLoading || Boolean(user && (cartOwnerId !== user.id || loading)),
+    mutating,
+    error,
+    refresh,
+    addItem: async (variantId, quantity) => performMutation((token) => addCartItem({ product_variant_id: variantId, quantity }, token)),
+    setQuantity: async (itemId, quantity) => performMutation((token) => updateCartItem(itemId, quantity, token)),
+    removeItem: async (itemId) => performMutation((token) => removeCartItem(itemId, token)),
+    clear: async () => performMutation((token) => clearCartRequest(token)),
+  }), [authLoading, cart, cartOwnerId, error, loading, mutating, performMutation, refresh, user]);
 
   return <ShopCartContext.Provider value={value}>{children}</ShopCartContext.Provider>;
 }

@@ -2,30 +2,55 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Brand;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class BrandRequest extends FormRequest
 {
-    public function authorize(): bool
+    protected function prepareForValidation(): void
     {
-        return true;
+        if (! $this->filled('slug') && ($this->isMethod('post') || $this->exists('slug'))) {
+            $this->merge([
+                'slug' => Str::slug((string) $this->input('name')),
+            ]);
+        }
     }
 
     public function rules(): array
     {
-        return [
-            'name' => 'required|string|max:100|unique:brands,name',
-            'description' => 'nullable|string',
-            'logo' => 'nullable|string|max:255',
-        ];
-    }
+        /** @var Brand|null $brand */
+        $brand = $this->route('brand');
+        $updating = $this->isMethod('put') || $this->isMethod('patch');
+        $nameUnique = Rule::unique('brands', 'name');
+        $slugUnique = Rule::unique('brands', 'slug');
 
-    public function messages(): array
-    {
+        if ($brand) {
+            $nameUnique->ignore($brand->getKey());
+            $slugUnique->ignore($brand->getKey());
+        }
+
         return [
-            'name.required' => 'Tên thương hiệu không được để trống.',
-            'name.max' => 'Tên thương hiệu không quá 100 ký tự.',
-            'name.unique' => 'Thương hiệu này đã tồn tại.',
+            'name' => [
+                $updating ? 'sometimes' : 'required',
+                'string',
+                'max:100',
+                $nameUnique,
+            ],
+            'slug' => [
+                $updating ? 'sometimes' : 'required',
+                'string',
+                'max:255',
+                'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/',
+                $slugUnique,
+            ],
+            'description' => ['sometimes', 'nullable', 'string'],
+            'logo' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'status' => ['sometimes', 'string', Rule::in(['active', 'inactive'])],
+            'deleted_at' => ['prohibited'],
+            'created_at' => ['prohibited'],
+            'updated_at' => ['prohibited'],
         ];
     }
 }

@@ -1,11 +1,13 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { ShopCartProvider } from "@/lib/shop-cart-context";
+import { CustomerAuthProvider } from "@/lib/customer-auth-context";
 import { ShopHeader } from "@/components/shop/ShopHeader";
 
 export function ShopLayout({ children }: { children: ReactNode }) {
   return (
-    <ShopCartProvider>
+    <CustomerAuthProvider>
+      <ShopCartProvider>
       <div className="shop-theme flex min-h-screen flex-col">
         <ShopHeader />
         <div className="flex-1">{children}</div>
@@ -31,6 +33,7 @@ export function ShopLayout({ children }: { children: ReactNode }) {
           <div className="border-t border-white/10 px-4 py-4 text-center text-xs text-zinc-500">© Sơn Phương Model</div>
         </footer>
       </div>
-    </ShopCartProvider>
+      </ShopCartProvider>
+    </CustomerAuthProvider>
   );
 }

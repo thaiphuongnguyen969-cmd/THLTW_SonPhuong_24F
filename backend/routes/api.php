@@ -1,45 +1,132 @@
-<?php 
+<?php
 
-use Illuminate\Http\Request; 
-use Illuminate\Support\Facades\Route; 
-use App\Http\Controllers\Api\CategoryController; 
-use App\Http\Controllers\Api\ProductController; 
-use App\Http\Controllers\Api\UserController; 
-use App\Http\Controllers\Api\AuthController; 
+use App\Http\Controllers\Api\AddressController;
+use App\Http\Controllers\Api\AdminDashboardController;
+use App\Http\Controllers\Api\AdminOrderController;
+use App\Http\Controllers\Api\AdminTrashController;
+use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BannerController;
 use App\Http\Controllers\Api\BrandController;
+use App\Http\Controllers\Api\CartController;
+use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\ForgotPasswordController;
+use App\Http\Controllers\Api\MenuController;
+use App\Http\Controllers\Api\OrderController;
+use App\Http\Controllers\Api\PostController;
+use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\ProductVariantController;
+use App\Http\Controllers\Api\UserController;
+use Illuminate\Support\Facades\Route;
 
-/* 
-|-------------------------------------------------------------------------- 
-| API Routes 
-|-------------------------------------------------------------------------- 
-*/ 
+Route::post('/register', [AuthController::class, 'register']);
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
+Route::prefix('forgot-password')->middleware('throttle:10,1')->group(function () {
+    Route::post('/send-otp', [ForgotPasswordController::class, 'sendOtp']);
+    Route::post('/verify-otp', [ForgotPasswordController::class, 'verifyOtp']);
+    Route::post('/reset', [ForgotPasswordController::class, 'resetPassword']);
+});
 
-// 1. Các route công khai (Không cần token: Đăng ký, Đăng nhập) 
-Route::post('/register', [AuthController::class, 'register']); 
-Route::post('/login', [AuthController::class, 'login']); 
+Route::apiResource('categories', CategoryController::class)->only(['index', 'show']);
+Route::apiResource('brands', BrandController::class)->only(['index', 'show']);
+Route::get('/products/hot', [ProductController::class, 'hot']);
+Route::apiResource('products', ProductController::class)->only(['index', 'show']);
+Route::get('/products/{product}/related', [ProductController::class, 'related']);
+Route::get('/posts', [PostController::class, 'publicIndex']);
+Route::get('/posts/{slug}', [PostController::class, 'publicShow'])->where('slug', '[a-z0-9]+(?:-[a-z0-9]+)*');
+Route::get('/menus', [MenuController::class, 'publicIndex']);
+Route::get('/banners', [BannerController::class, 'publicIndex']);
 
-// (Tùy chọn) Nếu bạn muốn cho phép mọi người xem danh sách sản phẩm và danh mục mà không cần đăng nhập:
-Route::apiResource('products', ProductController::class)->only(['index', 'show']); 
-Route::apiResource('categories', CategoryController::class)->only(['index', 'show']); 
+Route::middleware(['auth:sanctum', 'active'])->group(function () {
+    Route::get('/me', [AuthController::class, 'me']);
+    Route::patch('/me', [AuthController::class, 'updateProfile']);
+    Route::get('/user', [AuthController::class, 'me']);
+    Route::post('/logout', [AuthController::class, 'logout']);
+    Route::get('/addresses', [AddressController::class, 'index']);
+    Route::post('/addresses', [AddressController::class, 'store']);
+    Route::get('/addresses/{address}', [AddressController::class, 'show']);
+    Route::put('/addresses/{address}', [AddressController::class, 'update']);
+    Route::patch('/addresses/{address}', [AddressController::class, 'update']);
+    Route::delete('/addresses/{address}', [AddressController::class, 'destroy']);
+    Route::patch('/addresses/{address}/default', [AddressController::class, 'setDefault']);
+    Route::get('/cart', [CartController::class, 'show']);
+    Route::post('/cart/items', [CartController::class, 'store']);
+    Route::patch('/cart/items/{cartItem}', [CartController::class, 'update']);
+    Route::delete('/cart/items/{cartItem}', [CartController::class, 'destroyItem']);
+    Route::delete('/cart', [CartController::class, 'destroy']);
+    Route::get('/orders', [OrderController::class, 'index']);
+    Route::post('/orders', [OrderController::class, 'store']);
+    Route::get('/orders/{order}', [OrderController::class, 'show']);
+    Route::post('/orders/{order}/cancel', [OrderController::class, 'cancel']);
 
-// 2. Các route bảo mật yêu cầu Token (Middleware auth:sanctum cho toàn bộ Full CRUD còn lại) 
-Route::middleware('auth:sanctum')->group(function () { 
-    // Thông tin tài khoản đang đăng nhập & Đăng xuất
-    Route::get('/me', [AuthController::class, 'me']); 
-    Route::post('/logout', [AuthController::class, 'logout']); 
-     
-    Route::get('/user', function (Request $request) { 
-        return $request->user(); 
-    }); 
-    Route::apiResource('brands', BrandController::class);
-    Route::get('/brands/{name}', [BrandController::class, 'showByName']);
+    Route::middleware('admin')->group(function () {
+        Route::get('/admin/dashboard', AdminDashboardController::class);
+        Route::get('/admin/orders', [AdminOrderController::class, 'index']);
+        Route::get('/admin/orders/{order}', [AdminOrderController::class, 'show'])->whereNumber('order');
+        Route::patch('/admin/orders/{order}/status', [AdminOrderController::class, 'updateStatus'])->whereNumber('order');
+        Route::get('/admin/menus', [MenuController::class, 'adminIndex']);
+        Route::post('/admin/menus', [MenuController::class, 'adminStore']);
+        Route::get('/admin/menus/{menu}', [MenuController::class, 'adminShow'])->whereNumber('menu');
+        Route::patch('/admin/menus/{menu}', [MenuController::class, 'adminUpdate'])->whereNumber('menu');
+        Route::delete('/admin/menus/{menu}', [MenuController::class, 'adminDestroy'])->whereNumber('menu');
+        Route::get('/admin/banners', [BannerController::class, 'adminIndex']);
+        Route::post('/admin/banners', [BannerController::class, 'adminStore']);
+        Route::get('/admin/banners/{banner}', [BannerController::class, 'adminShow'])->whereNumber('banner');
+        Route::patch('/admin/banners/{banner}', [BannerController::class, 'adminUpdate'])->whereNumber('banner');
+        Route::post('/admin/banners/{banner}', [BannerController::class, 'adminUpdate'])->whereNumber('banner');
+        Route::delete('/admin/banners/{banner}', [BannerController::class, 'adminDestroy'])->whereNumber('banner');
+        Route::patch('users/{user}/status', [UserController::class, 'status'])->whereNumber('user');
+        Route::get('/admin/posts', [PostController::class, 'adminIndex']);
+        Route::post('/admin/posts', [PostController::class, 'adminStore']);
+        Route::get('/admin/posts/{post}', [PostController::class, 'adminShow']);
+        Route::patch('/admin/posts/{post}', [PostController::class, 'adminUpdate']);
+        Route::post('/admin/posts/{post}', [PostController::class, 'adminUpdate']);
+        Route::delete('/admin/posts/{post}', [PostController::class, 'adminDestroy']);
+        Route::apiResource('users', UserController::class);
+        Route::apiResource('categories', CategoryController::class)->only(['store', 'update', 'destroy']);
+        Route::apiResource('brands', BrandController::class)->only(['store', 'update', 'destroy']);
+        Route::apiResource('products', ProductController::class)->only(['store', 'update', 'destroy']);
+        Route::get('/admin/variant-options', [ProductVariantController::class, 'options']);
 
-    // Full CRUD cho Categories (Thêm, Sửa, Xóa yêu cầu Token)
-    Route::apiResource('categories', CategoryController::class); 
+        Route::prefix('admin')->group(function () {
+            Route::get('/trash', [AdminTrashController::class, 'index']);
+            Route::post('/trash/{type}/{id}/restore', [AdminTrashController::class, 'restore'])
+                ->where('type', 'category|brand|product|post|menu|banner')
+                ->whereNumber('id');
+            Route::delete('/trash/{type}/{id}', [AdminTrashController::class, 'destroy'])
+                ->where('type', 'category|brand|product|post|menu|banner')
+                ->whereNumber('id');
 
-    // Full CRUD cho Products (Thêm, Sửa, Xóa yêu cầu Token)
-    Route::apiResource('products', ProductController::class); 
+            Route::apiResource('categories', CategoryController::class)
+                ->only(['index', 'show'])
+                ->names([
+                    'index' => 'admin.catalog.categories.index',
+                    'show' => 'admin.catalog.categories.show',
+                ]);
+            Route::apiResource('brands', BrandController::class)
+                ->only(['index', 'show'])
+                ->names([
+                    'index' => 'admin.catalog.brands.index',
+                    'show' => 'admin.catalog.brands.show',
+                ]);
+            Route::apiResource('products', ProductController::class)
+                ->only(['index', 'show'])
+                ->names([
+                    'index' => 'admin.catalog.products.index',
+                    'show' => 'admin.catalog.products.show',
+                ]);
 
-    // Full CRUD cho Users (Xem, Thêm, Sửa, Xóa) 
-    Route::apiResource('users', UserController::class); 
+            Route::apiResource('products.variants', ProductVariantController::class)
+                ->parameters([
+                    'products' => 'product',
+                    'variants' => 'variant',
+                ])
+                ->names([
+                    'index' => 'admin.products.variants.index',
+                    'store' => 'admin.products.variants.store',
+                    'show' => 'admin.products.variants.show',
+                    'update' => 'admin.products.variants.update',
+                    'destroy' => 'admin.products.variants.destroy',
+                ]);
+        });
+    });
 });

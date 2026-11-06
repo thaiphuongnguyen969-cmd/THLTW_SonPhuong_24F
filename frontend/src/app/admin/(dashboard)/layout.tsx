@@ -1,11 +1,45 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/admin/Sidebar";
 import { Topbar } from "@/components/admin/Topbar";
+import { clearAdminToken, getAdminToken } from "@/lib/admin-auth";
+import { getCurrentUser } from "@/lib/api/auth";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [authorized, setAuthorized] = useState(false);
+  const router = useRouter();
+
+  useEffect(() => {
+    let active = true;
+    const token = getAdminToken();
+    if (!token) {
+      router.replace("/admin/login");
+      return () => { active = false; };
+    }
+
+    void getCurrentUser(token).then((user) => {
+      if (!active) return;
+      if (user.role === "admin") setAuthorized(true);
+      else {
+        clearAdminToken();
+        router.replace("/admin/login");
+      }
+    }).catch(() => {
+      if (!active) return;
+      clearAdminToken();
+      router.replace("/admin/login");
+    });
+
+    return () => { active = false; };
+  }, [router]);
+
+  if (!authorized) {
+    return <main className="flex min-h-screen items-center justify-center bg-stone-100 text-sm text-zinc-600">Đang xác minh phiên quản trị…</main>;
+  }
+
   return (
     <div className="admin-theme">
       <div className="flex min-h-screen">

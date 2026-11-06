@@ -1,0 +1,88 @@
+$kind: http-request
+url: http://127.0.0.1:8000/api/products
+method: POST
+headers:
+  Accept: application/json
+  Content-Type: application/json
+body:
+  type: json
+  content: "{\r
+
+    \    \"category_id\": 12,\r
+
+    \    \"name\": \"Sản phẩm kiểm thử Postman011\",\r
+
+    \    \"slug\": \"san-pham-kiem-thu-postman-1152026\",\r
+
+    \    \"description\": \"Sản phẩm dùng để thực hành kiểm thử API bằng Postman111\",\r
+
+    \    \"price\": 35000011,\r
+
+    \    \"sale_price\": 30000011,\r
+
+    \    \"status\": \"active\",\r
+
+    \    \"quantity\": 10\r
+
+    }"
+auth:
+  type: bearer
+  credentials:
+    token: 54|RxaYD90UDbLsdPx2TsAEe5bpDlUU190aLJemzXgW28471005
+scripts:
+  - type: afterResponse
+    code: "pm.test(\"Status code là 201 Created\", function () {\r
+
+      \    pm.response.to.have.status(201);\r
+
+      });\r
+
+      \r
+
+      pm.test(\"Response là JSON\", function () {\r
+
+      \    pm.response.to.be.json;\r
+
+      });\r
+
+      \r
+
+      const json = pm.response.json();\r
+
+      \r
+
+      pm.test(\"Tạo sản phẩm thành công\", function () {\r
+
+      \    pm.expect(json.success).to.eql(true);\r
+
+      });\r
+
+      \r
+
+      pm.test(\"Có thông báo thành công\", function () {\r
+
+      \    pm.expect(json.message).to.eql(\"Tạo sản phẩm thành công.\");\r
+
+      });\r
+
+      \r
+
+      pm.test(\"Có dữ liệu sản phẩm\", function () {\r
+
+      \    pm.expect(json.data).to.exist;\r
+
+      \    pm.expect(json.data.id).to.exist;\r
+
+      });\r
+
+      \r
+
+      // Lưu ID sản phẩm vừa tạo\r
+
+      if (json.data && json.data.id) {\r
+
+      \    pm.environment.set(\"product_id\", json.data.id);\r
+
+      }"
+    language: text/javascript
+order: 1000

@@ -1,0 +1,68 @@
+$kind: http-request
+url: http://127.0.0.1:8000/api/login
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \    \"email\": \"sonphuong@gmail.com\",\r
+
+    \    \"password\": \"s101078#\"\r
+
+    }"
+auth:
+  type: noauth
+scripts:
+  - type: beforeRequest
+    code: ""
+    language: text/javascript
+  - type: afterResponse
+    code: "pm.test(\"Đăng nhập thành công - Status 200\", function () {\r
+
+      \    pm.response.to.have.status(200);\r
+
+      });\r
+
+      \r
+
+      pm.test(\"Response trả về JSON\", function () {\r
+
+      \    pm.response.to.be.json;\r
+
+      });\r
+
+      \r
+
+      pm.test(\"Có thông báo đăng nhập\", function () {\r
+
+      \    const json = pm.response.json();\r
+
+      \    pm.expect(json.message).to.exist;\r
+
+      });\r
+
+      \r
+
+      pm.test(\"Có token đăng nhập\", function () {\r
+
+      \    const json = pm.response.json();\r
+
+      \    pm.expect(json.token).to.exist;\r
+
+      });\r
+
+      \r
+
+      // Tự động lưu token\r
+
+      const json = pm.response.json();\r
+
+      \r
+
+      if (json.token) {\r
+
+      \    pm.environment.set(\"token\", json.token);\r
+
+      }"
+    language: text/javascript
+order: 1000

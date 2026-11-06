@@ -5,12 +5,12 @@ export type CartItem = {
     id: number;
     name: string;
     slug: string;
-    image?: string | null;
+    image: string | null;
   };
   variant: {
     id: number;
     size: { id: number; name: string };
-    color: { id: number; name: string; hex_code?: string | null };
+    color: { id: number; name: string; hex_code: string | null };
   };
   unit_price: string;
   subtotal: string;

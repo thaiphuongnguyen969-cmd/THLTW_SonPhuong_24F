@@ -7,6 +7,23 @@
 <a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
 </p>
 
+## Quên mật khẩu qua Gmail
+
+Để gửi OTP đặt lại mật khẩu, cấu hình các biến sau trong `backend/.env` bằng Gmail và App Password đã tạo sau khi bật xác minh 2 bước:
+
+```dotenv
+MAIL_MAILER=smtp
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USERNAME=dia-chi-gmail-cua-ban
+MAIL_PASSWORD=app-password-cua-ban
+MAIL_ENCRYPTION=tls
+MAIL_FROM_ADDRESS=dia-chi-gmail-cua-ban
+MAIL_FROM_NAME="Son Phuong Model"
+```
+
+Không dùng mật khẩu đăng nhập Gmail thông thường và không đưa App Password vào Git. Sau khi cấu hình, chạy `php artisan config:clear` và `php artisan migrate` trong thư mục `backend`; migration chỉ tạo bảng lưu OTP đặt lại mật khẩu.
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:

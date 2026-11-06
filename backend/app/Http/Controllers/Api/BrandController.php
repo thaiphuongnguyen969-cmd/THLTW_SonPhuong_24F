@@ -3,62 +3,99 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\BrandIndexRequest;
 use App\Http\Requests\BrandRequest;
 use App\Http\Resources\BrandResource;
 use App\Models\Brand;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class BrandController extends Controller
 {
-    // GET /api/brands
-    public function index()
+    public function index(BrandIndexRequest $request)
     {
-        $brands = Brand::latest()->get();
+        $isAdmin = $this->isActiveAdmin($request);
+        $query = Brand::query()->when(
+            $isAdmin,
+            fn ($builder) => $builder->orderByDesc('created_at')->orderByDesc('id'),
+            fn ($builder) => $builder->orderBy('name')
+        );
 
-        return BrandResource::collection($brands);
+        if ($request->validated('status') === 'inactive' && ! $isAdmin) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không có quyền xem thương hiệu không hoạt động.',
+            ], 403);
+        }
+
+        if ($isAdmin && in_array($request->validated('status'), ['active', 'inactive'], true)) {
+            $query->where('status', $request->validated('status'));
+        } elseif (! $isAdmin) {
+            $query->where('status', 'active');
+        }
+
+        if ($isAdmin && $request->filled('search')) {
+            $query->where('name', 'like', '%'.$request->validated('search').'%');
+        }
+
+        return BrandResource::collection(
+            $query->paginate($request->integer('per_page', 15))
+        )->additional([
+            'success' => true,
+            'message' => 'Lấy danh sách thương hiệu thành công.',
+        ]);
     }
 
-    // POST /api/brands
     public function store(BrandRequest $request)
     {
         $brand = Brand::create($request->validated());
 
-        return response()->json([
-            'message' => 'Thêm thương hiệu thành công',
-            'data' => new BrandResource($brand)
-        ], 201);
+        return (new BrandResource($brand))->additional([
+            'success' => true,
+            'message' => 'Tạo thương hiệu thành công.',
+        ])->response()->setStatusCode(201);
     }
 
-    // GET /api/brands/{brand}
     public function show(Brand $brand)
     {
-        return new BrandResource($brand);
-    }
+        abort_unless($brand->status === 'active' || $this->isActiveAdmin(request()), 404);
 
-    // PUT/PATCH /api/brands/{brand}
-    public function update(Request $request, Brand $brand)
-    {
-        $data = $request->validate([
-            'name' => 'required|string|max:100|unique:brands,name,' . $brand->id,
-            'description' => 'nullable|string',
-            'logo' => 'nullable|string|max:255',
-        ]);
-
-        $brand->update($data);
-
-        return response()->json([
-            'message' => 'Cập nhật thương hiệu thành công',
-            'data' => new BrandResource($brand)
+        return (new BrandResource($brand))->additional([
+            'success' => true,
+            'message' => 'Lấy chi tiết thương hiệu thành công.',
         ]);
     }
 
-    // DELETE /api/brands/{brand}
-    public function destroy(Brand $brand)
+    public function update(BrandRequest $request, Brand $brand)
     {
+        $brand->update($request->validated());
+
+        return (new BrandResource($brand->fresh()))->additional([
+            'success' => true,
+            'message' => 'Cập nhật thương hiệu thành công.',
+        ]);
+    }
+
+    public function destroy(Brand $brand): JsonResponse
+    {
+        if ($brand->products()->withTrashed()->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không thể xóa thương hiệu đang được sản phẩm sử dụng.',
+            ], 409);
+        }
+
         $brand->delete();
 
         return response()->json([
-            'message' => 'Xóa thương hiệu thành công'
+            'success' => true,
+            'message' => 'Xóa thương hiệu thành công.',
         ]);
+    }
+
+    private function isActiveAdmin(BrandIndexRequest|Request $request): bool
+    {
+        return $request->user()?->role === 'admin'
+            && $request->user()?->status === 'active';
     }
 }

@@ -1,0 +1,62 @@
+$kind: http-request
+url: http://127.0.0.1:8000/api/products
+method: POST
+headers:
+  Accept: application/json
+  Content-Type: application/json
+body:
+  type: json
+  content: "{\r
+
+    \    \"category_id\": 1,\r
+
+    \    \"name\": \"Sản phẩm kiểm thử thiếu giá\",\r
+
+    \    \"slug\": \"san-pham-thieu-gia-postman-20261104\",\r
+
+    \    \"status\": \"active\",\r
+
+    \    \"quantity\": 5\r
+
+    }"
+auth:
+  type: bearer
+  credentials:
+    token: 48|yY9wSdvvvpvvYaGhsy004w8slRSJWN8YXESlr6Klb72d460f
+scripts:
+  - type: afterResponse
+    code: "pm.test(\"Status code là 422\", function () {\r
+
+      \    pm.response.to.have.status(422);\r
+
+      });\r
+
+      \r
+
+      pm.test(\"Response là JSON\", function () {\r
+
+      \    pm.response.to.be.json;\r
+
+      });\r
+
+      \r
+
+      const json = pm.response.json();\r
+
+      \r
+
+      pm.test(\"Có lỗi Data Validation\", function () {\r
+
+      \    pm.expect(json.errors).to.exist;\r
+
+      });\r
+
+      \r
+
+      pm.test(\"Báo lỗi trường price\", function () {\r
+
+      \    pm.expect(json.errors).to.have.property(\"price\");\r
+
+      });"
+    language: text/javascript
+order: 2000

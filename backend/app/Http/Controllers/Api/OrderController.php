@@ -3,116 +3,83 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\OrderCancelRequest;
+use App\Http\Requests\OrderCheckoutRequest;
+use App\Http\Resources\OrderResource;
 use App\Models\Order;
+use App\Models\User;
+use App\Services\OrderService;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 
 class OrderController extends Controller
 {
-    // Danh sách các trạng thái hợp lệ của đơn hàng
-    private $allowedStatuses = [
-        'Chờ xác nhận',
-        'Đã xác nhận',
-        'Đang giao',
-        'Đã giao',
-        'Đã hủy'
-    ];
-
-    // 1. Lấy danh sách tất cả đơn hàng (kèm thông tin khách hàng)
-    public function index()
-    {
-        $orders = Order::with('user')->get();
-        return response()->json([
-            'success' => true,
-            'data' => $orders
-        ], 200);
-    }
-
-    // 2. Thêm mới một đơn hàng (Tạo đơn hàng)
-    public function store(Request $request)
+    public function index(Request $request)
     {
         $validated = $request->validate([
-            'user_id' => 'required|exists:users,id',
-            'total' => 'required|numeric|min:0',
-            'status' => ['nullable', Rule::in($this->allowedStatuses)],
-            'address' => 'required|string|max:255',
-            'phone' => 'required|string|max:20',
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
         ]);
 
-        // Nếu không truyền status, mặc định sẽ là 'Chờ xác nhận' (đã định nghĩa trong migration)
-        $order = Order::create($validated);
+        /** @var User $user */
+        $user = $request->user();
+        $orders = $user->orders()
+            ->with(['items', 'payments', 'statusHistories'])
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->paginate((int) ($validated['per_page'] ?? 15));
 
-        return response()->json([
+        return OrderResource::collection($orders)->additional([
             'success' => true,
-            'message' => 'Tạo đơn hàng thành công',
-            'data' => $order
-        ], 201);
-    }
-
-    // 3. Lấy chi tiết một đơn hàng theo ID
-    public function show(string $id)
-    {
-        $order = Order::with('user')->find($id);
-
-        if (!$order) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Không tìm thấy đơn hàng'
-            ], 404);
-        }
-
-        return response()->json([
-            'success' => true,
-            'data' => $order
-        ], 200);
-    }
-
-    // 4. Cập nhật thông tin đơn hàng hoặc thay đổi trạng thái
-    public function update(Request $request, string $id)
-    {
-        $order = Order::find($id);
-
-        if (!$order) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Không tìm thấy đơn hàng'
-            ], 404);
-        }
-
-        $validated = $request->validate([
-            'user_id' => 'sometimes|exists:users,id',
-            'total' => 'sometimes|numeric|min:0',
-            'status' => ['sometimes', Rule::in($this->allowedStatuses)],
-            'address' => 'sometimes|string|max:255',
-            'phone' => 'sometimes|string|max:20',
+            'message' => 'Lấy danh sách đơn hàng thành công.',
         ]);
-
-        $order->update($validated);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Cập nhật đơn hàng thành công',
-            'data' => $order
-        ], 200);
     }
 
-    // 5. Xóa đơn hàng
-    public function destroy(string $id)
+    public function store(OrderCheckoutRequest $request, OrderService $orderService)
     {
-        $order = Order::find($id);
+        /** @var User $user */
+        $user = $request->user();
+        $validated = $request->validated();
+        $order = $orderService->checkout(
+            $user,
+            (int) $validated['address_id'],
+            $validated['note'] ?? null
+        );
 
-        if (!$order) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Không tìm thấy đơn hàng'
-            ], 404);
-        }
-
-        $order->delete();
-
-        return response()->json([
+        return OrderResource::make($order)->additional([
             'success' => true,
-            'message' => 'Xóa đơn hàng thành công'
-        ], 200);
+            'message' => 'Tạo đơn hàng thành công.',
+        ])->response()->setStatusCode(201);
+    }
+
+    public function show(Request $request, int $order)
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $record = $user->orders()->whereKey($order)
+            ->with(['items', 'payments', 'statusHistories'])
+            ->firstOrFail();
+
+        return OrderResource::make($record)->additional([
+            'success' => true,
+            'message' => 'Lấy chi tiết đơn hàng thành công.',
+        ]);
+    }
+
+    public function cancel(
+        OrderCancelRequest $request,
+        int $order,
+        OrderService $orderService
+    ) {
+        /** @var User $user */
+        $user = $request->user();
+        $record = $orderService->cancel(
+            $user,
+            $order,
+            $request->validated('reason')
+        );
+
+        return OrderResource::make($record)->additional([
+            'success' => true,
+            'message' => 'Hủy đơn hàng thành công.',
+        ]);
     }
 }

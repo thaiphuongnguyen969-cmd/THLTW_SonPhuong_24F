@@ -1,0 +1,51 @@
+$kind: http-request
+url: http://127.0.0.1:8000/api/products/15
+method: DELETE
+headers:
+  Accept: "\tapplication/json"
+  Content-Type: "\tapplication/json"
+auth:
+  type: bearer
+  credentials:
+    token: 52|erID1uSG9Nd5vbxX3RheeBxBkry9CMn5KBvpi9GIf8b114e4
+scripts:
+  - type: afterResponse
+    code: "pm.test(\"Status code là 200 OK\", function () {\r
+
+      \    pm.response.to.have.status(200);\r
+
+      });\r
+
+      \r
+
+      pm.test(\"Response là JSON\", function () {\r
+
+      \    pm.response.to.be.json;\r
+
+      });\r
+
+      \r
+
+      const json = pm.response.json();\r
+
+      \r
+
+      pm.test(\"Ngừng kinh doanh thành công\", function () {\r
+
+      \    pm.expect(json.success).to.eql(true);\r
+
+      });\r
+
+      \r
+
+      pm.test(\"Thông báo chính xác\", function () {\r
+
+      \    pm.expect(json.message).to.eql(\r
+
+      \        \"Ngừng kinh doanh sản phẩm thành công.\"\r
+
+      \    );\r
+
+      });"
+    language: text/javascript
+order: 1000

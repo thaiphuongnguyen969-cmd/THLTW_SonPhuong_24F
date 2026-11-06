@@ -2,7 +2,7 @@ export type ProductStatus = "active" | "inactive";
 
 export type ProductImage = {
   id: number;
-  product_id: number;
+  product_id?: number;
   image_url: string;
   is_primary: boolean;
   sort_order: number;
@@ -10,13 +10,19 @@ export type ProductImage = {
 
 export type ProductVariant = {
   id: number;
-  product_id: number;
+  product_id?: number;
   size: { id: number; name: string; sort_order?: number };
   color: { id: number; name: string; hex_code?: string | null };
-  sku: string;
+  sku?: string;
   price?: string | number | null;
-  stock: number;
-  status: string;
+  sale_price?: string | number | null;
+  original_price?: string | number | null;
+  effective_price?: string | number | null;
+  is_promotion?: boolean;
+  discount_percentage?: number | null;
+  available?: boolean;
+  stock?: number;
+  status?: string;
 };
 
 export type Promotion = {
@@ -36,6 +42,14 @@ export type Product = {
   description?: string | null;
   price: number | string;
   sale_price?: number | string | null;
+  original_price?: number | string | null;
+  effective_price?: number | string | null;
+  price_from?: boolean;
+  promotion_price?: number | string | null;
+  has_promotion?: boolean;
+  is_promotion?: boolean;
+  discount_percentage?: number | null;
+  total_sold?: number;
   status: ProductStatus;
   image?: string | null;
   quantity?: number | null;
